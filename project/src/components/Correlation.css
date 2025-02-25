@@ -1,0 +1,92 @@
+/* Add these styles to your CSS/Tailwind configuration */
+
+@keyframes slideIn {
+    from {
+      opacity: 0;
+      transform: translateX(100%);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+  
+  @keyframes rotate360 {
+    from {
+      transform: rotate(0deg);
+    }
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  
+  @keyframes pulse {
+    0% {
+      transform: scale(1);
+    }
+    50% {
+      transform: scale(1.1);
+    }
+    100% {
+      transform: scale(1);
+    }
+  }
+  
+  .animate-slideIn {
+    animation: slideIn 0.5s ease-out forwards;
+  }
+  
+  .rotate-360 {
+    animation: rotate360 1s ease-in-out;
+  }
+  
+  .animate-pulse {
+    animation: pulse 2s infinite;
+  }
+  
+  /* Enhance table cell hover effects */
+  td.correlation-cell:hover {
+    transform: scale(1.05);
+    transition: all 0.3s ease;
+    z-index: 10;
+    box-shadow: 0 0 15px rgba(0,0,0,0.1);
+  }
+  
+  /* Robot button hover effect */
+  .robot-button {
+    transition: all 0.3s ease;
+  }
+  
+  .robot-button:hover {
+    transform: scale(1.1) rotate(10deg);
+    box-shadow: 0 0 15px rgba(0,0,0,0.1);
+  }
+  
+  /* Popup styling */
+  .correlation-popup {
+    backdrop-filter: blur(8px);
+    background-color: rgba(255, 255, 255, 0.95);
+    border: 1px solid rgba(209, 213, 219, 0.3);
+    box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+  }
+  
+  /* Animation for matrix cells */
+  .matrix-cell {
+    transition: all 0.3s ease;
+  }
+  
+  .matrix-cell:hover {
+    transform: scale(1.1);
+    z-index: 20;
+  }
+  
+  /* Loading spinner animation */
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  
+  .loading-spinner {
+    animation: spin 1s linear infinite;
+  }
