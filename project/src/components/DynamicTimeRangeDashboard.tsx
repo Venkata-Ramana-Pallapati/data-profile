@@ -9,7 +9,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts';
-import { Bot, X } from 'lucide-react';
+import { Bot, X, BarChart2, Calendar, Database, RefreshCw } from 'lucide-react';
 
 interface FrequencyItem {
   time_block: string;
@@ -174,14 +174,18 @@ const DynamicTimeRangeDashboard: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
-        <div className="w-full max-w-6xl p-6 bg-white rounded-lg shadow-lg flex items-center justify-center h-96">
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+        <div className="w-full max-w-6xl p-6 bg-gray-800 rounded-lg shadow-2xl flex items-center justify-center h-96">
           <motion.div 
-            animate={{ scale: [1, 1.1, 1] }} 
-            transition={{ duration: 1.5, repeat: Infinity }}
-            className="text-lg font-medium text-gray-600"
+            animate={{ 
+              scale: [1, 1.2, 1],
+              rotate: [0, 5, 0, -5, 0]
+            }} 
+            transition={{ duration: 2, repeat: Infinity }}
+            className="text-xl font-medium text-blue-300 flex items-center"
           >
-            Loading data...
+            <RefreshCw className="mr-2 animate-spin text-blue-400" />
+            Loading your dashboard...
           </motion.div>
         </div>
       </div>
@@ -190,9 +194,12 @@ const DynamicTimeRangeDashboard: React.FC = () => {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
-        <div className="w-full max-w-6xl p-6 bg-white rounded-lg shadow-lg flex items-center justify-center h-96">
-          <div className="text-lg text-red-500">{error}</div>
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+        <div className="w-full max-w-6xl p-6 bg-gray-800 rounded-lg shadow-2xl flex items-center justify-center h-96 border border-red-500">
+          <div className="text-xl text-red-400 flex items-center">
+            <X className="mr-2 text-red-500" />
+            {error}
+          </div>
         </div>
       </div>
     );
@@ -200,74 +207,110 @@ const DynamicTimeRangeDashboard: React.FC = () => {
 
   // Animation variants for the popup
   const popupVariants = {
-    hidden: { opacity: 0, scale: 0.8, y: -20, x: 30 },
+    hidden: { opacity: 0, scale: 0.8, x: 30, rotate: -3 },
     visible: { 
       opacity: 1, 
       scale: 1, 
-      y: 0, 
       x: 0,
+      rotate: 0,
       transition: { 
         type: "spring", 
-        damping: 12, 
-        stiffness: 200 
+        damping: 15, 
+        stiffness: 300,
+        duration: 0.6
       }
     },
     exit: { 
       opacity: 0, 
       scale: 0.8, 
-      y: -20, 
       x: 30,
+      rotate: 3,
       transition: { 
-        duration: 0.2 
+        duration: 0.3 
       }
     }
   };
 
   return (
-    <div className="min-h-screen bg-gray-100 p-8 relative">
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 p-8 relative">
+      {/* Decorative floating elements */}
+      <motion.div 
+        className="absolute top-20 left-20 w-32 h-32 bg-blue-500 rounded-full opacity-5"
+        animate={{ 
+          y: [0, -20, 0],
+          scale: [1, 1.1, 1],
+        }}
+        transition={{ duration: 8, repeat: Infinity, repeatType: "reverse" }}
+      />
+      <motion.div 
+        className="absolute bottom-20 right-40 w-24 h-24 bg-indigo-600 rounded-full opacity-5"
+        animate={{ 
+          y: [0, 15, 0],
+          scale: [1, 1.2, 1],
+        }}
+        transition={{ duration: 7, repeat: Infinity, repeatType: "reverse", delay: 2 }}
+      />
+
       {/* Fixed AI Analysis Button at Top Right with enhanced animation */}
       <motion.button
-        whileHover={{ scale: 1.05, backgroundColor: "#4338ca" }}
+        whileHover={{ scale: 1.05, backgroundColor: "#1e40af" }}
         whileTap={{ scale: 0.95 }}
         onClick={handleRoboticButtonClick}
-        className="fixed top-4 right-4 z-50 px-4 py-2 rounded-full bg-indigo-600 hover:bg-indigo-700 transition-colors flex items-center text-white shadow-lg"
+        className="fixed top-4 right-4 z-50 px-5 py-3 rounded-full bg-blue-700 text-white shadow-lg shadow-blue-900/40 flex items-center font-semibold border border-blue-600"
         initial={{ y: -50 }}
         animate={{ y: 0 }}
         transition={{ type: "spring", damping: 12 }}
       >
-        <Bot className="mr-2" /> AI Analysis
+        <Bot className="mr-2 text-blue-300" /> AI Analysis
       </motion.button>
 
-      <div className="w-full max-w-6xl mx-auto bg-white rounded-xl shadow-lg p-6 relative z-10">
+      <div className="w-full max-w-6xl mx-auto bg-gray-800 rounded-xl shadow-2xl p-8 border border-gray-700 relative z-10 backdrop-blur-sm">
+        {/* Header with glowing accent */}
         <motion.div 
           initial={{ y: -10, opacity: 0 }} 
           animate={{ y: 0, opacity: 1 }}
           transition={{ duration: 0.5 }}
-          className="flex space-x-4 items-center mb-6"
+          className="flex flex-wrap space-x-4 items-center mb-8 relative"
         >
-          <h2 className="text-2xl font-bold text-gray-800">📊 Frequency Analysis</h2>
+          <motion.div 
+            className="absolute -left-4 -top-4 w-16 h-16 bg-blue-600 rounded-full opacity-30 blur-xl"
+            animate={{ 
+              scale: [1, 1.2, 1],
+              opacity: [0.2, 0.3, 0.2]
+            }}
+            transition={{ duration: 3, repeat: Infinity }}
+          />
           
-          {/* Time Range Selector with enhanced hover effect */}
-          <motion.select
-            whileHover={{ scale: 1.05, backgroundColor: "#f3f4f6" }}
-            className="px-4 py-2 rounded bg-gray-50 text-gray-800 border border-gray-300 cursor-pointer"
-            value={timeRange}
-            onChange={(e) => setTimeRange(e.target.value as TimeRange)}
-          >
-            <option value="daily">Daily</option>
-            <option value="weekly">Weekly</option>
-            <option value="monthly">Monthly</option>
-          </motion.select>
+          <h2 className="text-3xl font-bold text-white flex items-center">
+            <BarChart2 className="mr-3 text-blue-400" /> 
+            Frequency Analysis
+          </h2>
           
-          {/* Multi‑Select Tables Dropdown with enhanced animations */}
-          <div className="relative">
-            <motion.button
-              whileHover={{ scale: 1.05, backgroundColor: "#f3f4f6" }}
-              whileTap={{ scale: 0.95 }}
-              onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-              className="px-4 py-2 rounded bg-gray-50 text-gray-800 border border-gray-300"
+          {/* Time Range Selector with enhanced styling */}
+          <div className="relative ml-4">
+            <Calendar className="absolute left-3 top-2.5 text-blue-400 h-4 w-4" />
+            <motion.select
+              whileHover={{ scale: 1.03, backgroundColor: "#1e3a8a" }}
+              className="pl-10 pr-4 py-2 rounded-lg bg-gray-700 text-blue-100 border border-blue-900 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500"
+              value={timeRange}
+              onChange={(e) => setTimeRange(e.target.value as TimeRange)}
             >
-              Select Tables
+              <option value="daily">Daily</option>
+              <option value="weekly">Weekly</option>
+              <option value="monthly">Monthly</option>
+            </motion.select>
+          </div>
+          
+          {/* Multi‑Select Tables Dropdown with enhanced styling */}
+          <div className="relative ml-4">
+            <Database className="absolute left-3 top-2.5 text-blue-400 h-4 w-4" />
+            <motion.button
+              whileHover={{ scale: 1.03, backgroundColor: "#1e3a8a" }}
+              whileTap={{ scale: 0.97 }}
+              onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+              className="pl-10 pr-4 py-2 rounded-lg bg-gray-700 text-blue-100 border border-blue-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              Select Tables ({selectedTables.length})
             </motion.button>
             
             <AnimatePresence>
@@ -276,58 +319,59 @@ const DynamicTimeRangeDashboard: React.FC = () => {
                   initial={{ opacity: 0, y: -10 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -10 }}
-                  transition={{ duration: 0.2 }}
-                  className="absolute right-0 mt-2 py-2 w-56 bg-white rounded-md shadow-xl z-10 border border-gray-200"
+                  transition={{ duration: 0.3 }}
+                  className="absolute right-0 mt-2 py-3 w-64 bg-gray-800 rounded-lg shadow-2xl z-10 border border-gray-700"
                 >
-                  <div className="px-4 py-2 border-b border-gray-200">
-                    <label className="flex items-center space-x-2 cursor-pointer text-gray-800">
+                  <div className="px-4 py-2 border-b border-gray-700">
+                    <label className="flex items-center space-x-2 cursor-pointer text-blue-100">
                       <input
                         type="checkbox"
                         checked={selectedTables.length === categories.length}
                         onChange={toggleSelectAll}
-                        className="form-checkbox text-indigo-600"
+                        className="form-checkbox text-blue-600 rounded bg-gray-600 border-gray-500"
                       />
-                      <span>Select All</span>
+                      <span className="text-sm font-medium">Select All Tables</span>
                     </label>
                   </div>
-                  {categories.map((cat, index) => (
-                    <motion.div 
-                      key={cat} 
-                      className="px-4 py-2 hover:bg-gray-100"
-                      whileHover={{ backgroundColor: 'rgba(243, 244, 246, 1)' }}
-                      initial={{ opacity: 0, x: -10 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: index * 0.03 }}
-                    >
-                      <label className="flex items-center space-x-2 cursor-pointer text-gray-800">
-                        <input
-                          type="checkbox"
-                          checked={selectedTables.includes(cat)}
-                          onChange={() => handleTableToggle(cat)}
-                          className="form-checkbox text-indigo-600"
-                        />
-                        <span>{cat}</span>
-                      </label>
-                    </motion.div>
-                  ))}
+                  <div className="max-h-60 overflow-y-auto custom-scrollbar">
+                    {categories.map((cat, index) => (
+                      <motion.div 
+                        key={cat} 
+                        className="px-4 py-2 hover:bg-gray-700"
+                        whileHover={{ backgroundColor: 'rgba(55, 65, 81, 1)' }}
+                        initial={{ opacity: 0, x: -10 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: index * 0.03 }}
+                      >
+                        <label className="flex items-center space-x-2 cursor-pointer text-blue-100">
+                          <input
+                            type="checkbox"
+                            checked={selectedTables.includes(cat)}
+                            onChange={() => handleTableToggle(cat)}
+                            className="form-checkbox text-blue-600 rounded bg-gray-600 border-gray-500"
+                          />
+                          <span className="text-sm">{cat}</span>
+                        </label>
+                      </motion.div>
+                    ))}
+                  </div>
                 </motion.div>
               )}
             </AnimatePresence>
           </div>
         </motion.div>
 
-        {/* Frequency Chart with Increased Height and Additional Margin */}
+        {/* Frequency Chart with glass-like styling */}
         <motion.div 
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.8, delay: 0.3 }}
-          className="h-96 mt-12"
+          className="h-96 mt-12 p-4 rounded-xl bg-gray-900/50 border border-gray-700 backdrop-blur-sm"
         >
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart
               data={data}
               margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
-              className="transform transition-transform duration-500 hover:scale-102"
             >
               <defs>
                 {colorPalette.map((color, index) => (
@@ -337,18 +381,19 @@ const DynamicTimeRangeDashboard: React.FC = () => {
                   </linearGradient>
                 ))}
               </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(209, 213, 219, 0.5)" />
-              <XAxis dataKey="date" stroke="#6b7280" />
-              <YAxis stroke="#6b7280" />
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(75, 85, 99, 0.3)" />
+              <XAxis dataKey="date" stroke="#9ca3af" tick={{ fill: '#9ca3af' }} />
+              <YAxis stroke="#9ca3af" tick={{ fill: '#9ca3af' }} />
               <Tooltip 
                 contentStyle={{ 
-                  backgroundColor: 'rgba(255, 255, 255, 0.95)', 
-                  color: '#111827',
+                  backgroundColor: 'rgba(31, 41, 55, 0.95)', 
+                  color: '#e5e7eb',
                   borderRadius: '8px',
-                  border: '1px solid rgba(209, 213, 219, 1)',
-                  boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
+                  border: '1px solid rgba(75, 85, 99, 1)',
+                  boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.3)'
                 }} 
-                labelStyle={{ fontWeight: 'bold' }}
+                labelStyle={{ fontWeight: 'bold', color: '#f3f4f6' }}
+                itemStyle={{ color: '#f3f4f6' }}
               />
               {selectedTables.map((category, index) => (
                 <Area
@@ -366,80 +411,126 @@ const DynamicTimeRangeDashboard: React.FC = () => {
         </motion.div>
       </div>
 
-      {/* Enhanced AI Analysis Popup with beautiful animations and thick blue background */}
+      {/* Enhanced AI Analysis Popup with striking dark blue and black styling */}
       <AnimatePresence>
         {isPopupVisible && roboticInfo && (
           <motion.div
-            className="fixed top-16 right-6 p-1 rounded-xl shadow-2xl w-80 z-50 overflow-hidden"
+            className="fixed top-16 right-6 rounded-xl shadow-2xl w-96 z-50 overflow-hidden"
             variants={popupVariants}
             initial="hidden"
             animate="visible"
             exit="exit"
           >
-            {/* Animated background gradient */}
+            {/* Dark blue thick background with glow effect */}
             <motion.div 
-              className="absolute inset-0 bg-gradient-to-br from-blue-600 to-indigo-900 rounded-xl"
+              className="absolute inset-0 bg-gradient-to-br from-blue-900 via-blue-800 to-gray-900 rounded-xl"
               animate={{ 
-                background: [
-                  "linear-gradient(to bottom right, #2563eb, #4f46e5)",
-                  "linear-gradient(to bottom right, #1d4ed8, #4338ca)",
-                  "linear-gradient(to bottom right, #2563eb, #4f46e5)"
+                boxShadow: [
+                  "0 0 20px 2px rgba(30, 58, 138, 0.3)", 
+                  "0 0 30px 5px rgba(30, 64, 175, 0.4)", 
+                  "0 0 20px 2px rgba(30, 58, 138, 0.3)"
                 ]
               }}
-              transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+              transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
             />
             
-            {/* Content container */}
-            <div className="relative bg-white m-1 rounded-lg shadow-inner overflow-hidden">
-              <div className="flex justify-between items-center border-b border-gray-200 pb-2 px-4 pt-3 bg-gradient-to-r from-blue-50 to-indigo-50">
+            {/* Main content container with glass effect */}
+            <div className="relative m-0.5 rounded-lg overflow-hidden border border-blue-900/50 bg-gradient-to-br from-gray-900 to-gray-900/95">
+              {/* Header with animated accent */}
+              <div className="relative pt-4 pb-3 px-5 border-b border-blue-900/50 overflow-hidden">
+                <motion.div 
+                  className="absolute -right-6 -top-6 w-12 h-12 rounded-full bg-blue-500 blur-xl opacity-20"
+                  animate={{ 
+                    scale: [1, 1.5, 1],
+                    opacity: [0.2, 0.4, 0.2]
+                  }}
+                  transition={{ duration: 3, repeat: Infinity }}
+                />
+                
                 <motion.h3 
-                  className="text-lg font-bold flex items-center text-indigo-700"
+                  className="text-lg font-bold flex items-center text-blue-300"
                   initial={{ x: -20, opacity: 0 }}
                   animate={{ x: 0, opacity: 1 }}
                   transition={{ delay: 0.1 }}
                 >
                   <motion.div
-                    animate={{ rotate: [0, 10, -10, 0] }}
-                    transition={{ repeat: Infinity, duration: 2, repeatType: "reverse" }}
+                    animate={{ 
+                      rotate: [0, 5, -5, 0],
+                      color: ["#93c5fd", "#3b82f6", "#93c5fd"]
+                    }}
+                    transition={{ repeat: Infinity, duration: 3, repeatType: "reverse" }}
+                    className="mr-3"
                   >
-                    <Bot className="mr-2 text-indigo-600" />
+                    <Bot className="text-current" />
                   </motion.div>
                   AI Insights
+                  
+                  <motion.div 
+                    whileHover={{ rotate: 90, scale: 1.1 }}
+                    whileTap={{ scale: 0.9 }}
+                    className="ml-auto"
+                  >
+                    <X 
+                      className="cursor-pointer text-blue-400 hover:text-blue-300" 
+                      onClick={handleClosePopup} 
+                    />
+                  </motion.div>
                 </motion.h3>
-                <motion.div 
-                  whileHover={{ rotate: 90, scale: 1.1 }}
-                  whileTap={{ scale: 0.9 }}
-                >
-                  <X 
-                    className="cursor-pointer text-gray-500 hover:text-gray-700" 
-                    onClick={handleClosePopup} 
-                  />
-                </motion.div>
               </div>
+              
+              {/* Summary content with animated reveal */}
               <motion.div 
-                className="px-4 py-3 bg-white"
+                className="px-5 py-4"
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.2 }}
               >
-                <p className="text-sm text-gray-700">{roboticInfo.summary}</p>
+                <p className="text-sm text-blue-100 leading-relaxed">{roboticInfo.summary}</p>
               </motion.div>
               
-              {/* Animated sparkles/accent elements */}
+              {/* Decorative elements */}
               <motion.div 
-                className="absolute top-1 right-1 w-2 h-2 rounded-full bg-blue-400"
+                className="absolute top-3 right-14 w-1.5 h-1.5 rounded-full bg-blue-400"
                 animate={{ scale: [1, 1.5, 1], opacity: [0.7, 1, 0.7] }}
                 transition={{ duration: 2, repeat: Infinity }}
               />
               <motion.div 
-                className="absolute bottom-2 left-2 w-1 h-1 rounded-full bg-indigo-500"
+                className="absolute bottom-3 left-4 w-1 h-1 rounded-full bg-blue-500"
                 animate={{ scale: [1, 1.5, 1], opacity: [0.5, 0.8, 0.5] }}
                 transition={{ duration: 1.5, repeat: Infinity, delay: 0.5 }}
+              />
+              
+              {/* Bottom accent border */}
+              <motion.div 
+                className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-blue-700 to-transparent"
+                animate={{ 
+                  opacity: [0.3, 0.7, 0.3],
+                  backgroundPosition: ["0% 0%", "100% 0%", "0% 0%"]
+                }}
+                transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
               />
             </div>
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Add custom CSS for scrollbars */}
+      <style jsx>{`
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: #1f2937;
+          border-radius: 10px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: #3b82f6;
+          border-radius: 10px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: #2563eb;
+        }
+      `}</style>
     </div>
   );
 };
