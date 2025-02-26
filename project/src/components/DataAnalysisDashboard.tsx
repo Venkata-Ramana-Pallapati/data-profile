@@ -1,11 +1,20 @@
 import { useState, useEffect } from 'react';
 import { AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { AlertCircle, BarChart2, Activity,Download } from 'lucide-react';
+import { AlertCircle, BarChart2, Activity, Download } from 'lucide-react';
 import { useRef } from "react";
 import * as htmlToImage from 'html-to-image';
-
 import jsPDF from 'jspdf';
+
 // Types
+interface GranularityColumn {
+  column_name: string;
+  granularity: string;
+  reason: string;
+}
+
+interface GranularityResponse {
+  columns: GranularityColumn[];
+}
 
 interface TableMetrics {
   total_rows: number;
@@ -47,18 +56,30 @@ interface ChartDataPoint {
   [key: string]: string | number;
 }
 
+interface CorrelationMatrix {
+  columns: string[];
+  data: number[][];
+}
+
 type GranularityLevel = 'Very High' | 'High' | 'Medium' | 'Low' | 'Very Low';
 
 interface GranularityData {
   name: string;
   value: number;
   level: string;
+  reason: string;
   description: string;
 }
 
+// Enhanced color schemes for more vibrant visuals
 const COLORS = {
   quality: ['#0088FE', '#00C49F', '#FFBB28', '#FF8042'],
-  correlation: '#8884d8',
+  correlation: {
+    high: '#ff3366',
+    medium: '#ffcc33',
+    low: '#33ccff',
+    negative: '#9966ff'
+  },
   frequency: [
     { stroke: '#8884d8', fill: '#8884d8' },
     { stroke: '#82ca9d', fill: '#82ca9d' },
@@ -69,22 +90,31 @@ const COLORS = {
     { stroke: '#FFBB28', fill: '#FFBB28' },
     { stroke: '#FF8042', fill: '#FF8042' }
   ],
-  granularity: '#3B82F6'
+  // New vibrant gradient palette for granularity bars
+  granularity: [
+    '#FF6B6B', // Very Low - Vibrant red
+    '#FFD166', // Low - Golden yellow
+    '#06D6A0', // Medium - Turquoise
+    '#118AB2', // High - Blue
+    '#073B4C'  // Very High - Deep blue
+  ]
 };
 
 const DataAnalysisDashboard = () => {
   const [tables, setTables] = useState<string[]>([]);
   const [selectedTable, setSelectedTable] = useState<string>('');
   const [dataQuality, setDataQuality] = useState<DataQualityResponse | null>(null);
-  const [correlationData, setCorrelationData] = useState<any[]>([]);
+ // const [correlationData, setCorrelationData] = useState<any[]>([]);
+  const [correlationMatrix, setCorrelationMatrix] = useState<CorrelationMatrix | null>(null);
+  const [hoveredCorrelation, setHoveredCorrelation] = useState<{value: number, col1: string, col2: string} | null>(null);
   const [frequencyData, setFrequencyData] = useState<ChartDataPoint[]>([]);
   const [granularityData, setGranularityData] = useState<GranularityData[]>([]);
   const [timeRange, setTimeRange] = useState<'daily' | 'weekly' | 'monthly'>('daily');
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(true); 
   const [overallMetrics, setOverallMetrics] = useState<any>(null);
-  const [showCorrelationDropdown, setShowCorrelationDropdown] = useState(false);
+ // const [showCorrelationDropdown, setShowCorrelationDropdown] = useState(false);
   const [selectedTablesForCorrelation, setSelectedTablesForCorrelation] = useState<Record<string, boolean>>({});
-  const [selectedColumns, setSelectedColumns] = useState<Record<string, string[]>>({});
+  const [ , setSelectedColumns] = useState<Record<string, string[]>>({});
   const [tableColumns, setTableColumns] = useState<Record<string, string[]>>({});
   const [categories, setCategories] = useState<string[]>([]);
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
@@ -92,9 +122,7 @@ const DataAnalysisDashboard = () => {
   const dashboardRef = useRef(null);
   const [isDownloading, setIsDownloading] = useState(false);
 
-
-
-  //downloading pdfs 
+  // Updated PDF download functionality
   const handleDownload = async () => {
     if (!dashboardRef.current) return;
     
@@ -124,11 +152,20 @@ const DataAnalysisDashboard = () => {
         }
       });
 
-      // Create and trigger download
-      const link = document.createElement('a');
-      link.download = `dashboard-report-${new Date().toISOString().split('T')[0]}.png`;
-      link.href = dataUrl;
-      link.click();
+      // Create PDF with jsPDF
+      const pdf = new jsPDF({
+        orientation: 'landscape',
+        unit: 'mm',
+        format: 'a4'
+      });
+      
+      // Calculate dimensions to fit the dashboard on the page
+      const imgProps = pdf.getImageProperties(dataUrl);
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+      
+      pdf.addImage(dataUrl, 'PNG', 0, 0, pdfWidth, pdfHeight);
+      pdf.save(`dashboard-report-${new Date().toISOString().split('T')[0]}.pdf`);
 
       // Show tooltips again
       tooltips.forEach(tooltip => {
@@ -144,6 +181,7 @@ const DataAnalysisDashboard = () => {
       setIsDownloading(false);
     }
   };
+
   useEffect(() => {
     fetchInitialData();
   }, []);
@@ -151,6 +189,7 @@ const DataAnalysisDashboard = () => {
   useEffect(() => {
     if (selectedTable) {
       fetchFrequencyData();
+      fetchGlobalCorrelation();
     }
   }, [selectedTable, timeRange]);
 
@@ -164,72 +203,88 @@ const DataAnalysisDashboard = () => {
 
   const fetchInitialData = async () => {
     try {
+      setLoading(true);
+
+      // 🔹 Fetch available tables
       const tablesResponse = await fetch('http://127.0.0.1:8000/list-tables');
       const tablesData = await tablesResponse.json();
-      const tablesList = tablesData.tables;
-      console.log(tablesList);
+      const tablesList = tablesData.tables || [];
       setTables(tablesList);
 
-      const tableNamesParam = tablesList.join(",");
-      console.log(typeof(tableNamesParam));
-      const qualityResponse = await fetch(`http://127.0.0.1:8000/data-quality1`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ table_names: tableNamesParam })  // ✅ Send as string
-      });
+      // 🔹 Determine the first table
+      const activeTable = tablesList[0] || null;
+      if (activeTable) {
+        setSelectedTable(activeTable);
+      } else {
+        console.warn("No tables available.");
+        return;
+      }
 
+      // 🔹 Fetch data quality
+      const tableNamesParam = tablesList.join(",");
+      const qualityResponse = await fetch(`http://127.0.0.1:8000/data-quality1/${tableNamesParam}`, { method: 'POST' });
       const qualityData = await qualityResponse.json();
-      console.log(qualityData);
       setDataQuality(qualityData);
       calculateOverallMetrics(qualityData);
 
-      const correlationResponse = await fetch('http://127.0.0.1:8000/xgboost-correlation/', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          selected_columns: tablesList.reduce((acc: any, table: string) => ({
-            ...acc,
-            [table]: Object.keys(qualityData[table]?.columns || {})
-          }), {})
-        })
-      });
-      const correlationData = await correlationResponse.json();
-      setCorrelationData(transformCorrelationData(correlationData));
-
-      const [granularityResponse, metadataResponse] = await Promise.all([
-        fetch('http://127.0.0.1:8000/llm_granularity'),
-        fetch('http://127.0.0.1:8000/metadata')
-      ]);
-
-      const granularityData = await granularityResponse.json();
-      const metadataData = await metadataResponse.json();
-
-      const transformedGranularityData = Object.entries(granularityData)
-        .slice(1)
-        .map(([name, level]) => {
-          const cleanName = name.replace('- ', '').toLowerCase();
-          const cleanLevel = (level as string).toString().replace(/\*\*/g, '').trim() as GranularityLevel;
-          const description = metadataData.tables?.[cleanName]?.description || 'No description available';
-
-          return {
-            name: cleanName,
-            value: granularityToValue[cleanLevel],
-            level: cleanLevel,
-            description
-          };
-        });
-
-      setGranularityData(transformedGranularityData);
-      setLoading(false);
-
-      if (tablesList.length > 0) {
-        setSelectedTable(tablesList[0]);
-      }
     } catch (error) {
-      console.error('Error fetching data:', error);
+      console.error("Error in fetchInitialData:", error);
+    } finally {
       setLoading(false);
     }
   };
+
+  // New function to fetch global correlation data
+  const fetchGlobalCorrelation = async () => {
+    try {
+      setLoading(true);
+      
+      const response = await fetch('http://127.0.0.1:8000/global_correlation1');
+      if (!response.ok) {
+        throw new Error(`Global correlation API error: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      setCorrelationMatrix(data);
+    } catch (error) {
+      console.error("Error fetching global correlation data:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchGranularityData = async (tableName: string) => {
+    try {
+      setLoading(true);
+      
+      const response = await fetch(`http://127.0.0.1:8000/granularity/${tableName}`);
+      if (!response.ok) {
+        throw new Error(`Granularity API error: ${response.statusText}`);
+      }
+
+      const data: GranularityResponse = await response.json();
+      
+      const transformedGranularityData: GranularityData[] = data.columns.map(({ column_name, granularity, reason }: GranularityColumn) => ({
+        name: column_name,
+        value: granularityToValue[granularity as GranularityLevel] ?? 0,
+        level: granularity,
+        reason,
+        description: reason || "No description available"
+      }));
+
+      setGranularityData(transformedGranularityData);
+    } catch (error) {
+      console.error("Error fetching granularity data:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (selectedTable) {
+      fetchGranularityData(selectedTable);
+    }
+  }, [selectedTable]);
 
   // New frequency data fetching and transformation
   const fetchFrequencyData = async () => {
@@ -242,7 +297,6 @@ const DataAnalysisDashboard = () => {
       const responseData = jsonData.data || jsonData;
 
       const dataCategories = Object.keys(responseData);
-      console.log(dataCategories);
       setCategories(dataCategories);
       
       if (selectedCategories.length === 0) {
@@ -347,13 +401,6 @@ const DataAnalysisDashboard = () => {
     setOverallMetrics(metrics);
   };
 
-  const transformCorrelationData = (data: any) => {
-    return Object.entries(data).map(([name, value]) => ({
-      name,
-      value: parseFloat(value as string)
-    }));
-  };
-
   const handleTableSelection = async (table: string) => {
     const isSelected = !selectedTablesForCorrelation[table];
     setSelectedTablesForCorrelation(prev => ({
@@ -393,26 +440,41 @@ const DataAnalysisDashboard = () => {
     });
   };
 
-  const handleCalculateCorrelation = async () => {
-    const selectedColumnsFormat = Object.entries(selectedColumns).reduce((acc, [table, columns]) => {
-      if (columns.length > 0) {
-        acc[table] = columns;
-      }
-      return acc;
-    }, {} as Record<string, string[]>);
-
-    try {
-      const response = await fetch('http://127.0.0.1:8000/xgboost-correlation/', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ selected_columns: selectedColumnsFormat })
-      });
-      const data = await response.json();
-      setCorrelationData(transformCorrelationData(data));
-      setShowCorrelationDropdown(false);
-    } catch (error) {
-      console.error('Error calculating correlation:', error);
+  // Get correlation cell color based on value
+  const getCorrelationColor = (value: number) => {
+    const absValue = Math.abs(value);
+    
+    if (value < 0) {
+      return {
+        backgroundColor: COLORS.correlation.negative,
+        opacity: Math.max(0.2, absValue)
+      };
     }
+    
+    if (absValue > 0.7) {
+      return {
+        backgroundColor: COLORS.correlation.high,
+        opacity: Math.max(0.7, absValue)
+      };
+    } else if (absValue > 0.4) {
+      return {
+        backgroundColor: COLORS.correlation.medium,
+        opacity: Math.max(0.5, absValue)
+      };
+    } else {
+      return {
+        backgroundColor: COLORS.correlation.low,
+        opacity: Math.max(0.3, absValue)
+      };
+    }
+  };
+
+  // Get border thickness based on correlation strength
+  const getCorrelationBorderThickness = (value: number) => {
+    const absValue = Math.abs(value);
+    if (absValue > 0.7) return '3px';
+    if (absValue > 0.4) return '2px';
+    return '1px';
   };
 
   const CustomGranularityTooltip = ({ active, payload, label }: any) => {
@@ -423,7 +485,7 @@ const DataAnalysisDashboard = () => {
           <p className="font-medium text-lg mb-2 capitalize text-gray-800">{label}</p>
           <p className="text-blue-600 mb-2">Granularity: {item.level}</p>
           <div className="border-t border-gray-200 pt-2 mt-2">
-            <p className="text-sm text-gray-700">{item.description}</p>
+            <p className="text-sm text-gray-700">{item.reason}</p>
           </div>
         </div>
       );
@@ -464,11 +526,104 @@ const DataAnalysisDashboard = () => {
     );
   };
 
-  if (loading) {
+  // Render correlation heatmap matrix
+  const renderCorrelationMatrix = () => {
+    if (!correlationMatrix) return <div className="text-center py-8">Loading correlation data...</div>;
+
+    const { columns, data } = correlationMatrix;
     
     return (
+      <div className="overflow-auto max-h-80 custom-scrollbar">
+        <table className="w-full">
+          <thead>
+            <tr>
+              <th className="sticky top-0 left-0 z-20 bg-blue-900 p-2"></th>
+              {columns.map((col, idx) => (
+                <th key={idx} className="sticky top-0 z-10 bg-blue-900 p-2 text-xs whitespace-nowrap">
+                  {col}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {data.map((row, rowIdx) => (
+              <tr key={rowIdx}>
+                <th className="sticky left-0 z-10 bg-blue-900 p-2 text-xs whitespace-nowrap">
+                  {columns[rowIdx]}
+                </th>
+                {row.map((value, colIdx) => {
+                  const { backgroundColor, opacity } = getCorrelationColor(value);
+                  const borderThickness = getCorrelationBorderThickness(value);
+                  
+                  return (
+                    <td 
+                      key={colIdx}
+                      className="relative p-0 w-12 h-12 text-center transition-all duration-300 hover:scale-105"
+                      style={{ 
+                        backgroundColor, 
+                        opacity,
+                        border: borderThickness + ' solid rgba(255,255,255,0.1)',
+                        transform: 'scale(1)',
+                        transition: 'transform 0.2s ease, opacity 0.3s ease'
+                      }}
+                      onMouseEnter={() => setHoveredCorrelation({
+                        value,
+                        col1: columns[rowIdx],
+                        col2: columns[colIdx]
+                      })}
+                      onMouseLeave={() => setHoveredCorrelation(null)}
+                    >
+                      <span className="absolute inset-0 flex items-center justify-center text-white font-bold">
+                        {value.toFixed(2)}
+                      </span>
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  };
+
+  // Correlation Hover Detail Box
+  const renderCorrelationHoverDetail = () => {
+    if (!hoveredCorrelation) return null;
+    
+    const { value, col1, col2 } = hoveredCorrelation;
+    const absValue = Math.abs(value);
+    let strength = "No correlation";
+    
+    if (absValue > 0.7) strength = "Strong";
+    else if (absValue > 0.4) strength = "Moderate";
+    else if (absValue > 0.2) strength = "Weak";
+    
+    return (
+      <div className="bg-white bg-opacity-20 backdrop-blur-sm p-4 rounded-lg mt-4 animate-fadeIn">
+        <h4 className="text-lg font-semibold">
+          {strength} {value < 0 ? "Negative" : "Positive"} Correlation
+        </h4>
+        <p className="text-sm">
+          Between <span className="font-medium">{col1}</span> and <span className="font-medium">{col2}</span>
+        </p>
+        <p className="text-sm mt-2">
+          Correlation value: <span className="font-medium">{value.toFixed(3)}</span>
+        </p>
+      </div>
+    );
+  };
+
+  if (loading) {
+    return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-800 flex items-center justify-center">
-        <div className="text-xl font-semibold text-white">Loading dashboard data...</div>
+        <div className="text-xl font-semibold text-white flex items-center">
+          <svg className="animate-spin -ml-1 mr-3 h-8 w-8 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+          Loading dashboard data...
+        </div>
       </div>
     );
   }
@@ -476,24 +631,23 @@ const DataAnalysisDashboard = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-800 p-6">
       <div ref={dashboardRef} className="max-w-7xl mx-auto space-y-6">
-
-        {/* Overall Metrics Section */}
-        <div className="bg-white bg-opacity-10 backdrop-blur-sm rounded-xl p-6 text-white">
+        {/* Overall Metrics Section with Animation */}
+        <div className="bg-white bg-opacity-10 backdrop-blur-sm rounded-xl p-6 text-white animate-fadeIn">
           <h2 className="text-2xl font-bold mb-4">Overall Data Quality Metrics</h2>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-            <div className="bg-white bg-opacity-20 rounded-lg p-4">
+            <div className="bg-white bg-opacity-20 rounded-lg p-4 transform hover:scale-105 transition-transform duration-300">
               <h3 className="text-lg font-semibold">Total Rows</h3>
               <p className="text-2xl">{overallMetrics?.totalRows.toLocaleString()}</p>
             </div>
-            <div className="bg-white bg-opacity-20 rounded-lg p-4">
+            <div className="bg-white bg-opacity-20 rounded-lg p-4 transform hover:scale-105 transition-transform duration-300">
               <h3 className="text-lg font-semibold">Missing Values</h3>
               <p className="text-2xl">{overallMetrics?.missingValues.toLocaleString()}</p>
             </div>
-            <div className="bg-white bg-opacity-20 rounded-lg p-4">
+            <div className="bg-white bg-opacity-20 rounded-lg p-4 transform hover:scale-105 transition-transform duration-300">
               <h3 className="text-lg font-semibold">Avg Completeness</h3>
               <p className="text-2xl">{overallMetrics?.avgCompleteness.toFixed(1)}%</p>
             </div>
-            <div className="bg-white bg-opacity-20 rounded-lg p-4">
+            <div className="bg-white bg-opacity-20 rounded-lg p-4 transform hover:scale-105 transition-transform duration-300">
               <h3 className="text-lg font-semibold">Avg Uniqueness</h3>
               <p className="text-2xl">{overallMetrics?.avgUniqueness.toFixed(1)}%</p>
             </div>
@@ -502,82 +656,20 @@ const DataAnalysisDashboard = () => {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Correlation Analysis */}
+          {/* Correlation Matrix (Replaced Area Chart) */}
           <div className="bg-white bg-opacity-10 backdrop-blur-sm rounded-xl p-6 text-white">
             <div className="flex items-center justify-between gap-3 mb-4">
               <div className="flex items-center gap-3">
                 <Activity className="w-6 h-6" />
                 <h2 className="text-xl font-bold">Column Correlations</h2>
               </div>
-              <div className="relative">
-                <button
-                  onClick={() => setShowCorrelationDropdown(!showCorrelationDropdown)}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-                >
-                  Select Columns
-                </button>
-                
-                {showCorrelationDropdown && (
-                  <div className="absolute right-0 mt-2 w-96 bg-white text-gray-800 rounded-lg shadow-xl z-50">
-                    <div className="p-4">
-                      <h3 className="text-lg font-semibold mb-4">Select Tables and Columns</h3>
-                      <div className="max-h-96 overflow-y-auto">
-                        {tables.map(table => (
-                          <div key={table} className="mb-4">
-                            <label className="flex items-center gap-2 font-medium">
-                              <input
-                                type="checkbox"
-                                checked={selectedTablesForCorrelation[table] || false}
-                                onChange={() => handleTableSelection(table)}
-                                className="rounded"
-                              />
-                              {table}
-                            </label>
-                            
-                            {selectedTablesForCorrelation[table] && tableColumns[table] && (
-                              <div className="ml-6 mt-2 space-y-1">
-                                {tableColumns[table].map(column => (
-                                  <label key={column} className="flex items-center gap-2">
-                                    <input
-                                      type="checkbox"
-                                      checked={selectedColumns[table]?.includes(column) || false}
-                                      onChange={() => handleColumnSelection(table, column)}
-                                      className="rounded"
-                                    />
-                                    {column}
-                                  </label>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                      <button
-                        onClick={handleCalculateCorrelation}
-                        className="mt-4 w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-                      >
-                        Calculate Correlation
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
             </div>
-            <div className="h-80">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={correlationData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
-                  <XAxis dataKey="name" stroke="white" />
-                  <YAxis stroke="white" />
-                  <Tooltip />
-                  <Area type="monotone" dataKey="value" stroke={COLORS.correlation} fill={COLORS.correlation} fillOpacity={0.3} />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
+            {renderCorrelationMatrix()}
+            {renderCorrelationHoverDetail()}
           </div>
 
-          {/* Frequency Analysis */}
-          <div className="bg-white bg-opacity-10 backdrop-blur-sm rounded-xl p-6 text-white">
+          {/* Frequency Analysis with Animation */}
+          <div className="bg-white bg-opacity-10 backdrop-blur-sm rounded-xl p-6 text-white animate-fadeIn">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3">
                 <BarChart2 className="w-6 h-6" />
@@ -648,6 +740,7 @@ const DataAnalysisDashboard = () => {
                   <Tooltip 
                     labelFormatter={formatDate}
                     formatter={(value: number, name: string) => [value, formatCategoryName(name)]}
+                    animationDuration={300}
                   />
                   {selectedCategories.map((category, index) => (
                     <Area 
@@ -659,6 +752,8 @@ const DataAnalysisDashboard = () => {
                       fill={COLORS.frequency[index % COLORS.frequency.length].fill}
                       fillOpacity={0.5}
                       name={formatCategoryName(category)}
+                      animationDuration={1500}
+                      animationEasing="ease-in-out"
                     />
                   ))}
                 </AreaChart>
@@ -666,103 +761,105 @@ const DataAnalysisDashboard = () => {
             </div>
           </div>
 
-          {/* Granularity Analysis */}
-          <div className="bg-white bg-opacity-10 backdrop-blur-sm rounded-xl p-6 text-white col-span-2">
+          {/* Enhanced Granularity Analysis */}
+          <div className="bg-white bg-opacity-10 backdrop-blur-sm rounded-xl p-6 text-white col-span-2 animate-fadeIn">
             <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-3">
-                <AlertCircle className="w-6 h-6" />
-                <h2 className="text-xl font-bold">Granularity Analysis</h2>
+              <div className="mb-4">
+                <form onSubmit={(e) => e.preventDefault()}>
+                  <label className="block text-white text-lg font-semibold mb-2">Select a Table</label><select 
+                    value={selectedTable}
+                    onChange={(e) => setSelectedTable(e.target.value)}
+                    className="mt-1 block w-full rounded-md border-gray-300 bg-white bg-opacity-20 py-2 px-3 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 text-white"
+                  >
+                    {tables.map(table => (
+                      <option key={table} value={table}>{table}</option>
+                    ))}
+                  </select>
+                </form>
               </div>
-              <div className="flex gap-2">
-                {Object.entries(granularityToValue).reverse().map(([level]) => (
-                  <div key={level} className="flex items-center gap-2 px-3 py-1 rounded bg-white bg-opacity-10">
-                    <div 
-                      className="w-3 h-3 rounded-full" 
-                      style={{ 
-                        backgroundColor: COLORS.granularity,
-                        opacity: (granularityToValue[level as GranularityLevel] + 1) / 5 
-                      }} 
-                    />
-                    <span className="text-xs">{level}</span>
-                  </div>
-                ))}
-              </div>
+              <button
+                onClick={handleDownload}
+                disabled={isDownloading}
+                className={`flex items-center gap-2 px-4 py-2 rounded-md ${
+                  isDownloading ? 'bg-gray-500' : 'bg-blue-600 hover:bg-blue-700'
+                } transition-colors duration-300`}
+              >
+                <Download className="w-5 h-5" />
+                {isDownloading ? 'Downloading...' : 'Download Report'}
+              </button>
             </div>
-            <div className="h-80">
+            
+            <h2 className="text-xl font-bold mb-4">Column Granularity Analysis</h2>
+            <div className="h-96">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={granularityData} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
+                <BarChart
+                  data={granularityData}
+                  margin={{ top: 20, right: 30, left: 20, bottom: 60 }}
+                >
                   <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
                   <XAxis 
                     dataKey="name" 
-                    angle={-45}
-                    textAnchor="end"
-                    height={60}
-                    interval={0}
+                    angle={-45} 
+                    textAnchor="end" 
+                    height={70} 
                     stroke="white"
-                    tick={{ fill: 'white', fontSize: 12 }}
                   />
-                  <YAxis 
-                    ticks={[0, 1, 2, 3, 4]}
-                    tickFormatter={(value) => {
-                      const levels: GranularityLevel[] = ["Very Low", "Low", "Medium", "High", "Very High"];
-                      return levels[value];
-                    }}
+                  <YAxis
                     stroke="white"
-                    tick={{ fill: 'white', fontSize: 12 }}
+                    tickFormatter={(value) => {
+                      const levels = ["Very Low", "Low", "Medium", "High", "Very High"];
+                      return levels[value] || "";
+                    }}
                   />
                   <Tooltip content={<CustomGranularityTooltip />} />
-                  <Bar 
-                    dataKey="value" 
-                    fill={COLORS.granularity}
-                    radius={[4, 4, 0, 0]}
-                  >
+                  <Bar dataKey="value" animationDuration={1500}>
                     {granularityData.map((entry, index) => (
                       <Cell 
                         key={`cell-${index}`} 
-                        fill={COLORS.granularity}
-                        opacity={(entry.value + 1) / 5}
+                        fill={COLORS.granularity[entry.value]} 
+                        className="transform transition-all duration-300 hover:scale-105"
                       />
                     ))}
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
             </div>
+            
+            {/* Granularity Legend */}
+            <div className="mt-4 flex flex-wrap justify-center gap-4">
+              {["Very Low", "Low", "Medium", "High", "Very High"].map((level, index) => (
+                <div key={level} className="flex items-center">
+                  <div 
+                    className="w-4 h-4 mr-2 rounded-sm" 
+                    style={{backgroundColor: COLORS.granularity[index]}}
+                  ></div>
+                  <span>{level}</span>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
+        
+        {/* Data Quality Warning Alert */}
+        {dataQuality && selectedTable && dataQuality[selectedTable]?.completeness_percentage < 80 && (
+          <div className="bg-red-900 bg-opacity-70 backdrop-blur-sm rounded-xl p-4 text-white flex items-start space-x-4 animate-pulse">
+            <AlertCircle className="w-6 h-6 mt-1 flex-shrink-0" />
+            <div>
+              <h3 className="text-lg font-semibold">Data Quality Warning</h3>
+              <p>
+                The selected table '{selectedTable}' has a completeness percentage of only 
+                {' '}{dataQuality[selectedTable]?.completeness_percentage.toFixed(1)}%. 
+                Consider checking for missing values before drawing conclusions.
+              </p>
+            </div>
+          </div>
+        )}
+        
+        {/* Footer */}
+        <div className="pt-6 text-center text-white text-opacity-50 text-sm">
+          <p>Data Analysis Dashboard v1.0 • Last updated: {new Date().toLocaleDateString()}</p>
+        </div>
       </div>
-
-
-                    {/* Download Button */}
-                    <div className="max-w-7xl mx-auto mt-6 flex justify-end">
-        <button
-          onClick={handleDownload}
-          disabled={isDownloading}
-          className={`
-            flex items-center gap-2 px-6 py-3 
-            bg-blue-600 hover:bg-blue-700 
-            rounded-lg text-white transition-all duration-200
-            ${isDownloading ? 'opacity-50 cursor-not-allowed' : ''}
-            shadow-lg hover:shadow-xl
-          `}
-        >
-          {isDownloading ? (
-            <>
-              <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-              <span>Capturing...</span>
-            </>
-          ) : (
-            <>
-              <Download className="w-5 h-5" />
-              <span>Download Dashboard</span>
-            </>
-          )}
-        </button>
-      </div>
-
-
-
-
-
     </div>
   );
 };

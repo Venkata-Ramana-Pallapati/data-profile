@@ -9,7 +9,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts';
-import { Bot, X, BarChart2, Calendar, Database, RefreshCw } from 'lucide-react';
+import { Bot, X, BarChart2, Calendar, Database, RefreshCw, Loader } from 'lucide-react';
 
 interface FrequencyItem {
   time_block: string;
@@ -52,6 +52,7 @@ const DynamicTimeRangeDashboard: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [isPopupVisible, setIsPopupVisible] = useState<boolean>(false);
+  const [roboticLoading, setRoboticLoading] = useState<boolean>(false);
   const roboticInfoCache = useRef<{[key: string]: RoboticInfo}>({});
 
   // Fetch frequency data for the selected time range.
@@ -140,6 +141,9 @@ const DynamicTimeRangeDashboard: React.FC = () => {
       return;
     }
     
+    // Show loading state
+    setRoboticLoading(true);
+    
     // Fetch new data
     try {
       const response = await fetch(
@@ -160,6 +164,8 @@ const DynamicTimeRangeDashboard: React.FC = () => {
       }
     } catch (err) {
       console.error('Error fetching robotic analysis:', err);
+    } finally {
+      setRoboticLoading(false);
     }
   };
 
@@ -174,17 +180,17 @@ const DynamicTimeRangeDashboard: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
-        <div className="w-full max-w-6xl p-6 bg-gray-800 rounded-lg shadow-2xl flex items-center justify-center h-96">
+      <div className="min-h-screen bg-green-50 flex items-center justify-center">
+        <div className="w-full max-w-6xl p-6 bg-green-100/70 rounded-lg shadow-2xl flex items-center justify-center h-96">
           <motion.div 
             animate={{ 
               scale: [1, 1.2, 1],
               rotate: [0, 5, 0, -5, 0]
             }} 
             transition={{ duration: 2, repeat: Infinity }}
-            className="text-xl font-medium text-blue-300 flex items-center"
+            className="text-xl font-medium text-green-700 flex items-center"
           >
-            <RefreshCw className="mr-2 animate-spin text-blue-400" />
+            <RefreshCw className="mr-2 animate-spin text-green-600" />
             Loading your dashboard...
           </motion.div>
         </div>
@@ -194,9 +200,9 @@ const DynamicTimeRangeDashboard: React.FC = () => {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
-        <div className="w-full max-w-6xl p-6 bg-gray-800 rounded-lg shadow-2xl flex items-center justify-center h-96 border border-red-500">
-          <div className="text-xl text-red-400 flex items-center">
+      <div className="min-h-screen bg-green-50 flex items-center justify-center">
+        <div className="w-full max-w-6xl p-6 bg-green-100/70 rounded-lg shadow-2xl flex items-center justify-center h-96 border border-red-500">
+          <div className="text-xl text-red-500 flex items-center">
             <X className="mr-2 text-red-500" />
             {error}
           </div>
@@ -232,10 +238,10 @@ const DynamicTimeRangeDashboard: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 p-8 relative">
+    <div className="min-h-screen bg-gradient-to-br from-green-50 via-slate-100 to-green-100 p-8 relative">
       {/* Decorative floating elements */}
       <motion.div 
-        className="absolute top-20 left-20 w-32 h-32 bg-blue-500 rounded-full opacity-5"
+        className="absolute top-20 left-20 w-32 h-32 bg-green-500 rounded-full opacity-5"
         animate={{ 
           y: [0, -20, 0],
           scale: [1, 1.1, 1],
@@ -243,7 +249,7 @@ const DynamicTimeRangeDashboard: React.FC = () => {
         transition={{ duration: 8, repeat: Infinity, repeatType: "reverse" }}
       />
       <motion.div 
-        className="absolute bottom-20 right-40 w-24 h-24 bg-indigo-600 rounded-full opacity-5"
+        className="absolute bottom-20 right-40 w-24 h-24 bg-teal-600 rounded-full opacity-5"
         animate={{ 
           y: [0, 15, 0],
           scale: [1, 1.2, 1],
@@ -253,18 +259,27 @@ const DynamicTimeRangeDashboard: React.FC = () => {
 
       {/* Fixed AI Analysis Button at Top Right with enhanced animation */}
       <motion.button
-        whileHover={{ scale: 1.05, backgroundColor: "#1e40af" }}
+        whileHover={{ scale: 1.05, backgroundColor: "#047857" }}
         whileTap={{ scale: 0.95 }}
         onClick={handleRoboticButtonClick}
-        className="fixed top-4 right-4 z-50 px-5 py-3 rounded-full bg-blue-700 text-white shadow-lg shadow-blue-900/40 flex items-center font-semibold border border-blue-600"
+        disabled={roboticLoading}
+        className="fixed top-4 right-4 z-50 px-5 py-3 rounded-full bg-green-700 text-white shadow-lg shadow-green-900/20 flex items-center font-semibold border border-green-600"
         initial={{ y: -50 }}
         animate={{ y: 0 }}
         transition={{ type: "spring", damping: 12 }}
       >
-        <Bot className="mr-2 text-blue-300" /> AI Analysis
+        {roboticLoading ? (
+          <>
+            <Loader className="mr-2 text-green-300 animate-spin" /> Processing...
+          </>
+        ) : (
+          <>
+            <Bot className="mr-2 text-green-300" /> AI Analysis
+          </>
+        )}
       </motion.button>
 
-      <div className="w-full max-w-6xl mx-auto bg-gray-800 rounded-xl shadow-2xl p-8 border border-gray-700 relative z-10 backdrop-blur-sm">
+      <div className="w-full max-w-6xl mx-auto bg-green-100/70 rounded-xl shadow-2xl p-8 border border-green-200 relative z-10 backdrop-blur-sm">
         {/* Header with glowing accent */}
         <motion.div 
           initial={{ y: -10, opacity: 0 }} 
@@ -273,7 +288,7 @@ const DynamicTimeRangeDashboard: React.FC = () => {
           className="flex flex-wrap space-x-4 items-center mb-8 relative"
         >
           <motion.div 
-            className="absolute -left-4 -top-4 w-16 h-16 bg-blue-600 rounded-full opacity-30 blur-xl"
+            className="absolute -left-4 -top-4 w-16 h-16 bg-green-600 rounded-full opacity-30 blur-xl"
             animate={{ 
               scale: [1, 1.2, 1],
               opacity: [0.2, 0.3, 0.2]
@@ -281,17 +296,17 @@ const DynamicTimeRangeDashboard: React.FC = () => {
             transition={{ duration: 3, repeat: Infinity }}
           />
           
-          <h2 className="text-3xl font-bold text-white flex items-center">
-            <BarChart2 className="mr-3 text-blue-400" /> 
+          <h2 className="text-3xl font-bold text-green-800 flex items-center">
+            <BarChart2 className="mr-3 text-green-600" /> 
             Frequency Analysis
           </h2>
           
           {/* Time Range Selector with enhanced styling */}
           <div className="relative ml-4">
-            <Calendar className="absolute left-3 top-2.5 text-blue-400 h-4 w-4" />
+            <Calendar className="absolute left-3 top-2.5 text-green-600 h-4 w-4" />
             <motion.select
-              whileHover={{ scale: 1.03, backgroundColor: "#1e3a8a" }}
-              className="pl-10 pr-4 py-2 rounded-lg bg-gray-700 text-blue-100 border border-blue-900 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500"
+              whileHover={{ scale: 1.03, backgroundColor: "#065f46" }}
+              className="pl-10 pr-4 py-2 rounded-lg bg-green-200 text-green-900 border border-green-300 cursor-pointer focus:outline-none focus:ring-2 focus:ring-green-500"
               value={timeRange}
               onChange={(e) => setTimeRange(e.target.value as TimeRange)}
             >
@@ -303,12 +318,12 @@ const DynamicTimeRangeDashboard: React.FC = () => {
           
           {/* Multi‑Select Tables Dropdown with enhanced styling */}
           <div className="relative ml-4">
-            <Database className="absolute left-3 top-2.5 text-blue-400 h-4 w-4" />
+            <Database className="absolute left-3 top-2.5 text-green-600 h-4 w-4" />
             <motion.button
-              whileHover={{ scale: 1.03, backgroundColor: "#1e3a8a" }}
+              whileHover={{ scale: 1.03, backgroundColor: "#065f46" }}
               whileTap={{ scale: 0.97 }}
               onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-              className="pl-10 pr-4 py-2 rounded-lg bg-gray-700 text-blue-100 border border-blue-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="pl-10 pr-4 py-2 rounded-lg bg-green-200 text-green-900 border border-green-300 focus:outline-none focus:ring-2 focus:ring-green-500"
             >
               Select Tables ({selectedTables.length})
             </motion.button>
@@ -320,15 +335,15 @@ const DynamicTimeRangeDashboard: React.FC = () => {
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -10 }}
                   transition={{ duration: 0.3 }}
-                  className="absolute right-0 mt-2 py-3 w-64 bg-gray-800 rounded-lg shadow-2xl z-10 border border-gray-700"
+                  className="absolute right-0 mt-2 py-3 w-64 bg-green-100 rounded-lg shadow-2xl z-10 border border-green-300"
                 >
-                  <div className="px-4 py-2 border-b border-gray-700">
-                    <label className="flex items-center space-x-2 cursor-pointer text-blue-100">
+                  <div className="px-4 py-2 border-b border-green-200">
+                    <label className="flex items-center space-x-2 cursor-pointer text-green-900">
                       <input
                         type="checkbox"
                         checked={selectedTables.length === categories.length}
                         onChange={toggleSelectAll}
-                        className="form-checkbox text-blue-600 rounded bg-gray-600 border-gray-500"
+                        className="form-checkbox text-green-600 rounded bg-green-50 border-green-300"
                       />
                       <span className="text-sm font-medium">Select All Tables</span>
                     </label>
@@ -337,18 +352,18 @@ const DynamicTimeRangeDashboard: React.FC = () => {
                     {categories.map((cat, index) => (
                       <motion.div 
                         key={cat} 
-                        className="px-4 py-2 hover:bg-gray-700"
-                        whileHover={{ backgroundColor: 'rgba(55, 65, 81, 1)' }}
+                        className="px-4 py-2 hover:bg-green-200"
+                        whileHover={{ backgroundColor: 'rgba(167, 243, 208, 0.5)' }}
                         initial={{ opacity: 0, x: -10 }}
                         animate={{ opacity: 1, x: 0 }}
                         transition={{ delay: index * 0.03 }}
                       >
-                        <label className="flex items-center space-x-2 cursor-pointer text-blue-100">
+                        <label className="flex items-center space-x-2 cursor-pointer text-green-900">
                           <input
                             type="checkbox"
                             checked={selectedTables.includes(cat)}
                             onChange={() => handleTableToggle(cat)}
-                            className="form-checkbox text-blue-600 rounded bg-gray-600 border-gray-500"
+                            className="form-checkbox text-green-600 rounded bg-green-50 border-green-300"
                           />
                           <span className="text-sm">{cat}</span>
                         </label>
@@ -366,7 +381,7 @@ const DynamicTimeRangeDashboard: React.FC = () => {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.8, delay: 0.3 }}
-          className="h-96 mt-12 p-4 rounded-xl bg-gray-900/50 border border-gray-700 backdrop-blur-sm"
+          className="h-96 mt-12 p-4 rounded-xl bg-white/70 border border-green-200 backdrop-blur-sm"
         >
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart
@@ -381,19 +396,19 @@ const DynamicTimeRangeDashboard: React.FC = () => {
                   </linearGradient>
                 ))}
               </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(75, 85, 99, 0.3)" />
-              <XAxis dataKey="date" stroke="#9ca3af" tick={{ fill: '#9ca3af' }} />
-              <YAxis stroke="#9ca3af" tick={{ fill: '#9ca3af' }} />
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(74, 222, 128, 0.2)" />
+              <XAxis dataKey="date" stroke="#047857" tick={{ fill: '#047857' }} />
+              <YAxis stroke="#047857" tick={{ fill: '#047857' }} />
               <Tooltip 
                 contentStyle={{ 
-                  backgroundColor: 'rgba(31, 41, 55, 0.95)', 
-                  color: '#e5e7eb',
+                  backgroundColor: 'rgba(236, 253, 245, 0.95)', 
+                  color: '#065f46',
                   borderRadius: '8px',
-                  border: '1px solid rgba(75, 85, 99, 1)',
-                  boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.3)'
+                  border: '1px solid rgba(16, 185, 129, 0.5)',
+                  boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)'
                 }} 
-                labelStyle={{ fontWeight: 'bold', color: '#f3f4f6' }}
-                itemStyle={{ color: '#f3f4f6' }}
+                labelStyle={{ fontWeight: 'bold', color: '#065f46' }}
+                itemStyle={{ color: '#065f46' }}
               />
               {selectedTables.map((category, index) => (
                 <Area
@@ -411,7 +426,7 @@ const DynamicTimeRangeDashboard: React.FC = () => {
         </motion.div>
       </div>
 
-      {/* Enhanced AI Analysis Popup with striking dark blue and black styling */}
+      {/* Enhanced AI Analysis Popup with thick blue/black styling */}
       <AnimatePresence>
         {isPopupVisible && roboticInfo && (
           <motion.div
@@ -421,9 +436,9 @@ const DynamicTimeRangeDashboard: React.FC = () => {
             animate="visible"
             exit="exit"
           >
-            {/* Dark blue thick background with glow effect */}
+            {/* Thick blue background with glow effect */}
             <motion.div 
-              className="absolute inset-0 bg-gradient-to-br from-blue-900 via-blue-800 to-gray-900 rounded-xl"
+              className="absolute inset-0 bg-gradient-to-br from-blue-900 via-blue-800 to-black rounded-xl"
               animate={{ 
                 boxShadow: [
                   "0 0 20px 2px rgba(30, 58, 138, 0.3)", 
@@ -435,7 +450,7 @@ const DynamicTimeRangeDashboard: React.FC = () => {
             />
             
             {/* Main content container with glass effect */}
-            <div className="relative m-0.5 rounded-lg overflow-hidden border border-blue-900/50 bg-gradient-to-br from-gray-900 to-gray-900/95">
+            <div className="relative m-0.5 rounded-lg overflow-hidden border border-blue-900/50 bg-gradient-to-br from-black to-blue-900/95">
               {/* Header with animated accent */}
               <div className="relative pt-4 pb-3 px-5 border-b border-blue-900/50 overflow-hidden">
                 <motion.div 
@@ -520,15 +535,15 @@ const DynamicTimeRangeDashboard: React.FC = () => {
           width: 6px;
         }
         .custom-scrollbar::-webkit-scrollbar-track {
-          background: #1f2937;
+          background: #d1fae5;
           border-radius: 10px;
         }
         .custom-scrollbar::-webkit-scrollbar-thumb {
-          background: #3b82f6;
+          background: #10b981;
           border-radius: 10px;
         }
         .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-          background: #2563eb;
+          background: #059669;
         }
       `}</style>
     </div>
