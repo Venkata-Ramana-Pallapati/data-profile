@@ -4,6 +4,7 @@ import { AlertCircle, BarChart2, Activity, Download } from 'lucide-react';
 import { useRef } from "react";
 import * as htmlToImage from 'html-to-image';
 import jsPDF from 'jspdf';
+import React from "react";
 
 // Types
 interface GranularityColumn {
@@ -119,69 +120,115 @@ const DataAnalysisDashboard = () => {
   const [categories, setCategories] = useState<string[]>([]);
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [isFrequencyDropdownOpen, setIsFrequencyDropdownOpen] = useState(false);
-  const dashboardRef = useRef(null);
+  //const dashboardRef = useRef(null);
   const [isDownloading, setIsDownloading] = useState(false);
 
   // Updated PDF download functionality
-  const handleDownload = async () => {
-    if (!dashboardRef.current) return;
+  // Updated PDF download functionality
+// Make sure the ref has the correct type
+const dashboardRef = useRef<HTMLDivElement>(null);
+
+// Updated PDF download functionality with proper TypeScript typing
+const handleDownload = async () => {
+  if (!dashboardRef.current) return;
+  
+  try {
+    setIsDownloading(true);
+
+    // Hide all tooltips before capture
+    const tooltips = document.querySelectorAll('.recharts-tooltip-wrapper');
+    tooltips.forEach(tooltip => {
+      if (tooltip instanceof HTMLElement) {
+        tooltip.style.visibility = 'hidden';
+      }
+    });
+
+    // Get the dashboard element with proper typing
+    const dashboardElement = dashboardRef.current as HTMLDivElement;
     
-    try {
-      setIsDownloading(true);
-
-      // Hide all tooltips before capture
-      const tooltips = document.querySelectorAll('.recharts-tooltip-wrapper');
-      tooltips.forEach(tooltip => {
-        if (tooltip instanceof HTMLElement) {
-          tooltip.style.visibility = 'hidden';
-        }
-      });
-
-      // Wait for any animations to complete
-      await new Promise(resolve => setTimeout(resolve, 500));
-
-      const dataUrl = await htmlToImage.toPng(dashboardRef.current, {
-        quality: 1.0,
-        backgroundColor: '#1a1f2e',
-        style: {
-          transform: 'scale(1)',
-        },
-        filter: (node) => {
-          // Filter out tooltip elements during capture
-          return !node.classList?.contains('recharts-tooltip-wrapper');
-        }
-      });
-
-      // Create PDF with jsPDF
-      const pdf = new jsPDF({
-        orientation: 'landscape',
-        unit: 'mm',
-        format: 'a4'
-      });
-      
-      // Calculate dimensions to fit the dashboard on the page
-      const imgProps = pdf.getImageProperties(dataUrl);
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
-      
-      pdf.addImage(dataUrl, 'PNG', 0, 0, pdfWidth, pdfHeight);
-      pdf.save(`dashboard-report-${new Date().toISOString().split('T')[0]}.pdf`);
-
-      // Show tooltips again
-      tooltips.forEach(tooltip => {
-        if (tooltip instanceof HTMLElement) {
-          tooltip.style.visibility = 'visible';
-        }
-      });
-
-    } catch (error) {
-      console.error('Error downloading dashboard:', error);
-      alert('Failed to download dashboard. Please try again.');
-    } finally {
-      setIsDownloading(false);
+    // Store original styles safely
+    const originalHeight = dashboardElement.style.height;
+    const originalOverflow = dashboardElement.style.overflow;
+    const originalPosition = dashboardElement.style.position;
+    
+    // Temporarily modify the element for complete capture
+    dashboardElement.style.height = 'auto';
+    dashboardElement.style.overflow = 'visible';
+    dashboardElement.style.position = 'relative';
+    
+    // Wait for any DOM updates to complete
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    // Use html-to-image to capture the complete content
+    const dataUrl = await htmlToImage.toPng(dashboardElement, {
+      quality: 1.0,
+      backgroundColor: '#1a1f2e',
+      height: dashboardElement.scrollHeight,
+      width: dashboardElement.scrollWidth,
+      style: {
+        transform: 'scale(1)',
+      },
+      filter: (node) => {
+        // Filter out tooltip elements during capture
+        return !node.classList?.contains('recharts-tooltip-wrapper');
+      }
+    });
+    
+    // Create PDF with appropriate dimensions
+    const pdf = new jsPDF({
+      orientation: 'landscape',
+      unit: 'mm',
+      format: 'a4'
+    });
+    
+    // Get image properties for sizing
+    const imgProps = pdf.getImageProperties(dataUrl);
+    const pdfWidth = pdf.internal.pageSize.getWidth();
+    const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+    
+    // Calculate number of pages needed
+    const pageHeight = pdf.internal.pageSize.getHeight();
+    const pageCount = Math.ceil(pdfHeight / pageHeight);
+    
+    // Add image across multiple pages if needed
+    let heightLeft = pdfHeight;
+    let position = 0;
+    
+    // First page
+    pdf.addImage(dataUrl, 'PNG', 0, position, pdfWidth, pdfHeight);
+    heightLeft -= pageHeight;
+    position -= pageHeight;
+    
+    // Add subsequent pages if content is larger than one page
+    while (heightLeft >= 0) {
+      pdf.addPage();
+      pdf.addImage(dataUrl, 'PNG', 0, position, pdfWidth, pdfHeight);
+      heightLeft -= pageHeight;
+      position -= pageHeight;
     }
-  };
+    
+    // Save the PDF
+    pdf.save(`dashboard-report-${new Date().toISOString().split('T')[0]}.pdf`);
+    
+    // Restore original styles
+    dashboardElement.style.height = originalHeight;
+    dashboardElement.style.overflow = originalOverflow;
+    dashboardElement.style.position = originalPosition;
+    
+    // Show tooltips again
+    tooltips.forEach(tooltip => {
+      if (tooltip instanceof HTMLElement) {
+        tooltip.style.visibility = 'visible';
+      }
+    });
 
+  } catch (error) {
+    console.error('Error downloading dashboard:', error);
+    alert('Failed to download dashboard. Please try again.');
+  } finally {
+    setIsDownloading(false);
+  }
+};
   useEffect(() => {
     fetchInitialData();
   }, []);
@@ -766,102 +813,122 @@ const DataAnalysisDashboard = () => {
             <div className="flex items-center justify-between mb-6">
               <div className="mb-4">
                 <form onSubmit={(e) => e.preventDefault()}>
-                  <label className="block text-white text-lg font-semibold mb-2">Select a Table</label><select 
+                  <label className="block text-white text-lg font-semibold mb-2">Select a Table</label>
+                  <select 
                     value={selectedTable}
                     onChange={(e) => setSelectedTable(e.target.value)}
-                    className="mt-1 block w-full rounded-md border-gray-300 bg-white bg-opacity-20 py-2 px-3 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 text-white"
+                    className="bg-white bg-opacity-20 rounded-md px-4 py-2 text-white w-64"
                   >
                     {tables.map(table => (
                       <option key={table} value={table}>{table}</option>
                     ))}
                   </select>
                 </form>
-              </div>
-              <button
-                onClick={handleDownload}
-                disabled={isDownloading}
-                className={`flex items-center gap-2 px-4 py-2 rounded-md ${
-                  isDownloading ? 'bg-gray-500' : 'bg-blue-600 hover:bg-blue-700'
-                } transition-colors duration-300`}
-              >
-                <Download className="w-5 h-5" />
-                {isDownloading ? 'Downloading...' : 'Download Report'}
-              </button>
-            </div>
-            
-            <h2 className="text-xl font-bold mb-4">Column Granularity Analysis</h2>
-            <div className="h-96">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart
-                  data={granularityData}
-                  margin={{ top: 20, right: 30, left: 20, bottom: 60 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
-                  <XAxis 
-                    dataKey="name" 
-                    angle={-45} 
-                    textAnchor="end" 
-                    height={70} 
-                    stroke="white"
-                  />
-                  <YAxis
-                    stroke="white"
-                    tickFormatter={(value) => {
-                      const levels = ["Very Low", "Low", "Medium", "High", "Very High"];
-                      return levels[value] || "";
-                    }}
-                  />
-                  <Tooltip content={<CustomGranularityTooltip />} />
-                  <Bar dataKey="value" animationDuration={1500}>
-                    {granularityData.map((entry, index) => (
-                      <Cell 
-                        key={`cell-${index}`} 
-                        fill={COLORS.granularity[entry.value]} 
-                        className="transform transition-all duration-300 hover:scale-105"
-                      />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-            
-            {/* Granularity Legend */}
-            <div className="mt-4 flex flex-wrap justify-center gap-4">
-              {["Very Low", "Low", "Medium", "High", "Very High"].map((level, index) => (
-                <div key={level} className="flex items-center">
-                  <div 
-                    className="w-4 h-4 mr-2 rounded-sm" 
-                    style={{backgroundColor: COLORS.granularity[index]}}
-                  ></div>
-                  <span>{level}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-        
-        {/* Data Quality Warning Alert */}
-        {dataQuality && selectedTable && dataQuality[selectedTable]?.completeness_percentage < 80 && (
-          <div className="bg-red-900 bg-opacity-70 backdrop-blur-sm rounded-xl p-4 text-white flex items-start space-x-4 animate-pulse">
-            <AlertCircle className="w-6 h-6 mt-1 flex-shrink-0" />
-            <div>
-              <h3 className="text-lg font-semibold">Data Quality Warning</h3>
-              <p>
-                The selected table '{selectedTable}' has a completeness percentage of only 
-                {' '}{dataQuality[selectedTable]?.completeness_percentage.toFixed(1)}%. 
-                Consider checking for missing values before drawing conclusions.
-              </p>
-            </div>
-          </div>
-        )}
-        
-        {/* Footer */}
-        <div className="pt-6 text-center text-white text-opacity-50 text-sm">
-          <p>Data Analysis Dashboard v1.0 • Last updated: {new Date().toLocaleDateString()}</p>
-        </div>
-      </div>
-    </div>
-  );
-};
+                              </div>
+                              <button 
+                                onClick={handleDownload}
+                                disabled={isDownloading}
+                                className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition-colors duration-300"
+                              >
+                                <Download size={16} />
+                                <span>{isDownloading ? 'Exporting...' : 'Export to PDF'}</span>
+                              </button>
+                            </div>
+                            <div className="h-96">
+                              <ResponsiveContainer width="100%" height="100%">
+                                <BarChart
+                                  data={granularityData}
+                                  margin={{ top: 10, right: 30, left: 30, bottom: 60 }}
+                                >
+                                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+                                  <XAxis 
+                                    dataKey="name"
+                                    angle={-45}
+                                    textAnchor="end" 
+                                    height={70}
+                                    stroke="white"
+                                  />
+                                  <YAxis
+                                    stroke="white"
+                                    domain={[0, 4]}
+                                    ticks={[0, 1, 2, 3, 4]}
+                                    tickFormatter={(value) => {
+                                      const labels = ["Very Low", "Low", "Medium", "High", "Very High"];
+                                      return labels[value];
+                                    }}
+                                  />
+                                  <Tooltip content={<CustomGranularityTooltip />} />
+                                  <Bar 
+                                    dataKey="value" 
+                                    animationDuration={1500}
+                                    animationEasing="ease-in-out"
+                                  >
+                                    {granularityData.map((entry, index) => (
+                                      <Cell 
+                                        key={`cell-${index}`} 
+                                        fill={COLORS.granularity[Math.floor(entry.value)]} 
+                                      />
+                                    ))}
+                                  </Bar>
+                                </BarChart>
+                              </ResponsiveContainer>
+                            </div>
+                            <div className="mt-6 grid grid-cols-5 gap-2">
+                              {Object.entries(granularityToValue).map(([level, value], index) => (
+                                <div key={level} className="flex items-center space-x-2">
+                                  <div 
+                                    className="w-4 h-4 rounded-full" 
+                                    style={{ backgroundColor: COLORS.granularity[value] }}
+                                  ></div>
+                                  <span className="text-sm">{level}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                
+                        {/* Alert Messages for Data Quality Issues */}
+                        {dataQuality && Object.values(dataQuality).some(table => 
+                          table.completeness_percentage < 70 || table.uniqueness_percentage < 70
+                        ) && (
+                          <div className="bg-red-900 bg-opacity-30 border border-red-500 rounded-xl p-6 text-white animate-fadeIn">
+                            <div className="flex items-center gap-3 mb-4">
+                              <AlertCircle className="w-6 h-6 text-red-400" />
+                              <h2 className="text-xl font-bold text-red-300">Data Quality Alerts</h2>
+                            </div>
+                            <ul className="space-y-2">
+                              {Object.entries(dataQuality).map(([tableName, metrics]) => (
+                                <React.Fragment key={tableName}>
+                                  {metrics.completeness_percentage < 70 && (
+                                    <li className="flex items-start">
+                                      <span className="inline-block w-3 h-3 rounded-full bg-red-500 mt-1.5 mr-2"></span>
+                                      <span>
+                                        <strong>{tableName}</strong> has low completeness ({metrics.completeness_percentage.toFixed(1)}%). 
+                                        Consider addressing missing values to improve data quality.
+                                      </span>
+                                    </li>
+                                  )}
+                                  {metrics.uniqueness_percentage < 70 && (
+                                    <li className="flex items-start">
+                                      <span className="inline-block w-3 h-3 rounded-full bg-orange-500 mt-1.5 mr-2"></span>
+                                      <span>
+                                        <strong>{tableName}</strong> has duplicate data issues (uniqueness: {metrics.uniqueness_percentage.toFixed(1)}%). 
+                                        Review duplicate records.
+                                      </span>
+                                    </li>
+                                  )}
+                                </React.Fragment>
+                              ))}
+                            </ul>
+                          </div>
+                          
+                        )}
+                      </div>
 
-export default DataAnalysisDashboard;
+
+                      
+                    </div>
+                  );
+                };
+                
+    export default DataAnalysisDashboard;
