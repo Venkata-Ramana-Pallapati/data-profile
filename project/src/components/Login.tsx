@@ -16,7 +16,7 @@ export function Login({ onLogin }: LoginProps) {
     // Simulate loading
     setTimeout(() => {
       onLogin(email);
-    }, 1000);
+    }, 1000);  
   };
 
   return (

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Database, LineChart, Terminal, Brain, AlertCircle, GitBranch, Table2, Key, BarChart3, Layers, Clock } from "lucide-react";
+import { Database, LineChart, Terminal, Brain, AlertCircle, GitBranch, Table2, Key, BarChart3, Layers, Clock, ChevronDown, ChevronRight } from "lucide-react";
 import DataViolationsPopup from "./DataViolationsPopup"; // Import the violations popup
 
 // Define interfaces
@@ -16,7 +16,7 @@ interface SidebarProps {
   onModuleChange: (module: string) => void;
   subModule?: string;
   onSubModuleChange?: (subModule: string) => void;
-  triggerDataProfiling: () => void;  // Ensure this is definitely a function
+  triggerDataProfiling: () => void;
 }
 
 interface DataProfilingOverviewProps {
@@ -39,7 +39,8 @@ export function Sidebar({
 }: SidebarProps) {
   const [violationsCount, setViolationsCount] = useState(0);
   const [isPopupOpen, setIsPopupOpen] = useState(false);
-  const [sliderValue, setSliderValue] = useState(50);
+  const [expandedCategories, setExpandedCategories] = useState<{[key: string]: boolean}>({});
+  const [showDataProfilingSubMenu, setShowDataProfilingSubMenu] = useState(false);
 
   // Fetch violations count
   useEffect(() => {
@@ -63,57 +64,74 @@ export function Sidebar({
     { id: "nlp", name: "Natural Language Processing", icon: Brain },
   ];
 
-  const dataProfilingSubModules = [
-    "Data Quality",
-    "Data Frequency",
-    "Column Correlation",
-    "Fact Table And Dimension Table",
-    "Primary Key Foreign Key Relation",
-    "Statistical Analysis",
-    "Data Granularity",
-    "Data Analysis Dashboard",
+  // Reorganized data profiling submodules with categories
+  const dataProfilingCategories = [
+    { 
+      id: "dataAnalysis",
+      name: "Data Analysis",
+      modules: [
+        "Data Quality",
+        "Data Frequency",
+        "Statistical Analysis",
+        "Data Granularity",
+      ] 
+    },
+    { 
+      id: "relationships",
+      name: "Relationships", 
+      modules: [
+        "Column Correlation",
+        "Fact Table And Dimension Table",
+        "Primary Key Foreign Key Relation",
+      ] 
+    },
+   
+    
   ];
 
-  // Handle slider change
-  const handleSliderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setSliderValue(parseInt(e.target.value, 10));
-  };
-
-  // Handle module change - FIX: Make sure we're handling this correctly
+  // Handle module change
   const handleModuleClick = (moduleId: string) => {
     console.log('Before module change:', activeModule);
-    onModuleChange(moduleId);
-    console.log('After module change:', moduleId);
     
-    if (moduleId === "dataProfiler" && typeof triggerDataProfiling === 'function') {
-      console.log("Attempting to trigger data profiling");
-      triggerDataProfiling();
-      console.log("Data profiling trigger attempted");
+    if (moduleId === "dataProfiler") {
+      // Toggle sub-menu visibility when clicking on Data Profiling
+      setShowDataProfilingSubMenu(!showDataProfilingSubMenu);
+      
+      // Only change module and trigger if it's not already active
+      if (activeModule !== "dataProfiler") {
+        onModuleChange(moduleId);
+        console.log('After module change:', moduleId);
+        
+        if (typeof triggerDataProfiling === 'function') {
+          console.log("Attempting to trigger data profiling");
+          triggerDataProfiling();
+          console.log("Data profiling trigger attempted");
+        }
+      }
+    } else {
+      // For other modules, just change the active module
+      onModuleChange(moduleId);
+      console.log('After module change:', moduleId);
+      
+      // Hide data profiling submenu when switching to other modules
+      setShowDataProfilingSubMenu(false);
     }
   };
+
+  // Toggle category expansion
+  const toggleCategory = (categoryId: string) => {
+    setExpandedCategories(prev => ({
+      ...prev,
+      [categoryId]: !prev[categoryId]
+    }));
+  };
+
   return (
     <>
       {/* Sidebar */}
       <div className="w-64 bg-gray-800 text-white h-screen fixed top-0 left-0 overflow-y-auto">
         <div className="p-4 border-b border-gray-700">
           <h1 className="text-2xl font-bold">SigmaDQ</h1>
-        </div>
-        
-        {/* Slider Component */}
-        <div className="p-4 border-b border-gray-700">
-          <label htmlFor="data-threshold" className="block text-sm font-medium mb-2">
-            Data Threshold: {sliderValue}%
-          </label>
-          <input
-            type="range"
-            id="data-threshold"
-            name="data-threshold"
-            min="0"
-            max="100"
-            value={sliderValue}
-            onChange={handleSliderChange}
-            className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer"
-          />
         </div>
         
         <nav className="flex-1">
@@ -129,31 +147,75 @@ export function Sidebar({
                   <module.icon className="w-5 h-5 mr-2" />
                   {module.name}
                 </button>
-                {activeModule === "dataProfiler" && module.id === "dataProfiler" && onSubModuleChange && (
-                  <ul className="ml-4 mt-2 space-y-1">
-                    {dataProfilingSubModules.map((subModuleName) => (
-                      <li key={subModuleName}>
-                        <button
-                          onClick={() => {
-                            if (onSubModuleChange) {
-                              onSubModuleChange(subModuleName);
+                
+                {activeModule === "dataProfiler" && module.id === "dataProfiler" && showDataProfilingSubMenu && onSubModuleChange && (
+                  <div className="ml-4 mt-2 space-y-2">
+                    {dataProfilingCategories.map((category) => (
+                      <div key={category.id}>
+                        {/* Collapsible category button */}
+                        {category.id !== "dashboard" ? (
+                          <button
+                            onClick={() => toggleCategory(category.id)}
+                            className="w-full flex items-center justify-between p-2 rounded-md text-sm font-medium hover:bg-gray-700"
+                          >
+                            <span>{category.name}</span>
+                            {expandedCategories[category.id] ? 
+                              <ChevronDown className="w-4 h-4" /> : 
+                              <ChevronRight className="w-4 h-4" />
                             }
-                          }}
-                          className={`w-full text-left p-2 rounded-md text-sm flex justify-between ${
-                            subModule === subModuleName ? "bg-gray-700" : "hover:bg-gray-700"
-                          }`}
-                        >
-                          {subModuleName}
-                          {/* Show Red Badge if Violations Exist */}
-                          {subModuleName === "Business Rule Violations" && violationsCount > 0 && (
-                            <span className="bg-red-600 text-white text-xs rounded-full px-2">
-                              {violationsCount}
-                            </span>
-                          )}
-                        </button>
-                      </li>
+                          </button>
+                        ) : (
+                          // Dashboard is not collapsible
+                          <ul className="space-y-1">
+                            {category.modules.map((subModuleName) => (
+                              <li key={subModuleName}>
+                                <button
+                                  onClick={() => {
+                                    if (onSubModuleChange) {
+                                      onSubModuleChange(subModuleName);
+                                    }
+                                  }}
+                                  className={`w-full text-left p-2 rounded-md text-sm ${
+                                    subModule === subModuleName ? "bg-gray-700" : "hover:bg-gray-700"
+                                  }`}
+                                >
+                                  {subModuleName}
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                        
+                        {/* Submodules for the category */}
+                        {expandedCategories[category.id] && category.id !== "dashboard" && (
+                          <ul className="ml-2 mt-1 space-y-1">
+                            {category.modules.map((subModuleName) => (
+                              <li key={subModuleName}>
+                                <button
+                                  onClick={() => {
+                                    if (onSubModuleChange) {
+                                      onSubModuleChange(subModuleName);
+                                    }
+                                  }}
+                                  className={`w-full text-left p-2 rounded-md text-sm ${
+                                    subModule === subModuleName ? "bg-gray-700" : "hover:bg-gray-700"
+                                  }`}
+                                >
+                                  {subModuleName}
+                                  {/* Show Red Badge if Violations Exist */}
+                                  {subModuleName === "Business Rule Violations" && violationsCount > 0 && (
+                                    <span className="ml-2 bg-red-600 text-white text-xs rounded-full px-2">
+                                      {violationsCount}
+                                    </span>
+                                  )}
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
                     ))}
-                  </ul>
+                  </div>
                 )}
               </li>
             ))}
@@ -188,15 +250,49 @@ export function DataProfilingOverview({
   triggerModule,
   triggerAllModules
 }: DataProfilingOverviewProps) {
-  const features = [
-    { icon: Database, title: "Data Quality", description: "Analyze data completeness, accuracy, and consistency", color: "from-blue-500 to-blue-600", module: "Data Quality" },
-    { icon: GitBranch, title: "Column Correlation", description: "Discover relationships between data columns", color: "from-purple-500 to-purple-600", module: "Column Correlation" },
-    { icon: Table2, title: "Fact & Dimension Tables", description: "Identify and analyze table relationships", color: "from-green-500 to-green-600", module: "Fact Table And Dimension Table" },
-    { icon: Key, title: "Primary & Foreign Keys", description: "Map key relationships across tables", color: "from-yellow-500 to-yellow-600", module: "Primary Key Foreign Key Relation" },
-    { icon: BarChart3, title: "Statistical Analysis", description: "Get detailed statistical insights", color: "from-pink-500 to-pink-600", module: "Statistical Analysis" },
-    { icon: AlertCircle, title: "Business Rule Violations", description: "Detect and analyze rule violations", color: "from-red-500 to-red-600", module: "Business Rule Violations" },
-    { icon: Layers, title: "Data Granularity", description: "Analyze data at different levels", color: "from-indigo-500 to-indigo-600", module: "Data Granularity" },
-    { icon: Clock, title: "Data Frequency", description: "Monitor data update patterns", color: "from-cyan-500 to-cyan-600", module: "Data Frequency" },
+  // State for collapsible sections
+  const [expandedSections, setExpandedSections] = useState({
+    dataAnalysis: true,
+    relationships: true,
+    violations: true
+  });
+
+  // Toggle section visibility
+  const toggleSection = (section: string) => {
+    setExpandedSections(prev => ({
+      ...prev,
+      [section]: !prev[section]
+    }));
+  };
+
+  // Reorganized features into categories
+  const featureCategories = [
+    {
+      id: "dataAnalysis",
+      title: "Data Analysis",
+      features: [
+        { icon: Database, title: "Data Quality", description: "Analyze data completeness, accuracy, and consistency", color: "from-blue-500 to-blue-600", module: "Data Quality" },
+        { icon: Clock, title: "Data Frequency", description: "Monitor data update patterns", color: "from-cyan-500 to-cyan-600", module: "Data Frequency" },
+        { icon: BarChart3, title: "Statistical Analysis", description: "Get detailed statistical insights", color: "from-pink-500 to-pink-600", module: "Statistical Analysis" },
+        { icon: Layers, title: "Data Granularity", description: "Analyze data at different levels", color: "from-indigo-500 to-indigo-600", module: "Data Granularity" },
+      ]
+    },
+    {
+      id: "relationships",
+      title: "Relationships",
+      features: [
+        { icon: GitBranch, title: "Column Correlation", description: "Discover relationships between data columns", color: "from-purple-500 to-purple-600", module: "Column Correlation" },
+        { icon: Table2, title: "Fact & Dimension Tables", description: "Identify and analyze table relationships", color: "from-green-500 to-green-600", module: "Fact Table And Dimension Table" },
+        { icon: Key, title: "Primary & Foreign Keys", description: "Map key relationships across tables", color: "from-yellow-500 to-yellow-600", module: "Primary Key Foreign Key Relation" },
+      ]
+    },
+    {
+      id: "violations",
+      title: "Violations",
+      features: [
+        { icon: AlertCircle, title: "Business Rule Violations", description: "Detect and analyze rule violations", color: "from-red-500 to-red-600", module: "Business Rule Violations" },
+      ]
+    }
   ];
 
   return (
@@ -215,48 +311,66 @@ export function DataProfilingOverview({
           </button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {features.map((feature, index) => (
-            <button
-              key={index}
-              onClick={() => {
-                console.log(`Feature clicked: ${feature.module}, Status: ${moduleStatuses[feature.module]}`);
-                
-                // Check if module data is not ready or loading, only then trigger it
-                if (moduleStatuses[feature.module] === 'idle') {
-                  console.log(`Triggering module: ${feature.module} (was idle)`);
-                  triggerModule(feature.module);
-                } else if (moduleStatuses[feature.module] === 'loading') {
-                  console.log(`Module ${feature.module} is already loading`);
-                } else if (moduleStatuses[feature.module] === 'ready') {
-                  console.log(`Module ${feature.module} is already ready - not triggering again`);
-                }
-                
-                // Always navigate to the submodule
-                onSubModuleChange(feature.module);
-              }}
-              className={`text-left bg-gradient-to-br ${feature.color} p-6 rounded-xl text-white transform transition-all duration-200 hover:scale-105 hover:shadow-lg relative`}
+        {/* Render each category with collapsible functionality */}
+        {featureCategories.map((category, idx) => (
+          <div key={idx} className="mb-10">
+            <button 
+              onClick={() => toggleSection(category.id)}
+              className="flex items-center justify-between w-full text-left mb-6"
             >
-              <feature.icon className="w-10 h-10 mb-4" />
-              <h3 className="text-xl font-semibold mb-2">{feature.title}</h3>
-              <p className="text-white/80">{feature.description}</p>
-              
-              {/* Loading indicator */}
-              {moduleStatuses[feature.module] === 'loading' && (
-                <div className="absolute top-2 right-2">
-                  <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-white"></div>
-                </div>
-              )}
-              
-              {/* Ready indicator */}
-              {moduleStatuses[feature.module] === 'ready' && (
-                <div className="absolute top-2 right-2">
-                  <div className="h-4 w-4 rounded-full bg-green-300"></div>
-                </div>
-              )}
+              <h2 className="text-2xl font-bold text-gray-800">{category.title}</h2>
+              {expandedSections[category.id as keyof typeof expandedSections] ? 
+                <ChevronDown className="w-6 h-6 text-gray-600" /> : 
+                <ChevronRight className="w-6 h-6 text-gray-600" />
+              }
             </button>
-          ))}
-        </div>
+            
+            {expandedSections[category.id as keyof typeof expandedSections] && (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {category.features.map((feature, index) => (
+                  <button
+                    key={index}
+                    onClick={() => {
+                      console.log(`Feature clicked: ${feature.module}, Status: ${moduleStatuses[feature.module]}`);
+                      
+                      // Check if module data is not ready or loading, only then trigger it
+                      if (moduleStatuses[feature.module] === 'idle') {
+                        console.log(`Triggering module: ${feature.module} (was idle)`);
+                        triggerModule(feature.module);
+                      } else if (moduleStatuses[feature.module] === 'loading') {
+                        console.log(`Module ${feature.module} is already loading`);
+                      } else if (moduleStatuses[feature.module] === 'ready') {
+                        console.log(`Module ${feature.module} is already ready - not triggering again`);
+                      }
+                      
+                      // Always navigate to the submodule
+                      onSubModuleChange(feature.module);
+                    }}
+                    className={`text-left bg-gradient-to-br ${feature.color} p-6 rounded-xl text-white transform transition-all duration-200 hover:scale-105 hover:shadow-lg relative`}
+                  >
+                    <feature.icon className="w-10 h-10 mb-4" />
+                    <h3 className="text-xl font-semibold mb-2">{feature.title}</h3>
+                    <p className="text-white/80">{feature.description}</p>
+                    
+                    {/* Loading indicator */}
+                    {moduleStatuses[feature.module] === 'loading' && (
+                      <div className="absolute top-2 right-2">
+                        <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-white"></div>
+                      </div>
+                    )}
+                    
+                    {/* Ready indicator */}
+                    {moduleStatuses[feature.module] === 'ready' && (
+                      <div className="absolute top-2 right-2">
+                        <div className="h-4 w-4 rounded-full bg-green-300"></div>
+                      </div>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -309,7 +423,7 @@ export function App() {
     }, processingTime);
   };
 
-  // Function to trigger all submodules - FIXED to always run when called
+  // Function to trigger all submodules
   const triggerDataProfiling = () => {
     console.log("=== TRIGGERING ALL DATA PROFILING SUBMODULES ===");
     
@@ -365,7 +479,7 @@ export function App() {
             activeModule={activeModule}
             moduleStatuses={moduleStatuses}
             triggerModule={triggerModule}
-            triggerAllModules={triggerDataProfiling}  // Pass the trigger function
+            triggerAllModules={triggerDataProfiling}
           />
         );
       } else {
@@ -410,7 +524,7 @@ export function App() {
         onModuleChange={handleModuleChange}
         subModule={subModule}
         onSubModuleChange={handleSubModuleChange}
-        triggerDataProfiling={triggerDataProfiling}  // Make sure this is a function
+        triggerDataProfiling={triggerDataProfiling}
       />
       <div className="ml-64">
         {renderContent()}
