@@ -14,7 +14,6 @@ interface ViolationData {
   };
   summary: string;
 }
-
 const DataViolationsPopup: React.FC<DataViolationsPopupProps> = ({ isOpen, setIsOpen }) => {
   const [data, setData] = useState<ViolationData | null>(null);
   const [loading, setLoading] = useState(true);

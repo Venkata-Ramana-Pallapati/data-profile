@@ -20,10 +20,38 @@ const ColumnCorrelation = () => {
   const [aiSummary, setAiSummary] = useState('');
   const [zoomedColumn, setZoomedColumn] = useState<number | null>(null);
   const matrixRef = useRef<HTMLDivElement>(null);
+  
+  // Enhanced cache with longer expiration (1 day = 24 hours)
+  const globalDataCache = useRef<{
+    data: [string, string, number][] | null, 
+    columns: string[] | null,
+    matrix: number[][] | null,
+    summary: string | null,
+    timestamp: number
+  }>({
+    data: null,
+    columns: null,
+    matrix: null,
+    summary: null,
+    timestamp: 0
+  });
+
+  // Component mounted flag to prevent state updates after unmounting
+  const isMounted = useRef(true);
+  
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      isMounted.current = false;
+    };
+  }, []);
 
   // Initial Data Loading
   useEffect(() => {
-    Promise.all([fetchTables(), fetchGlobalCorrelation()]);
+    fetchTables();
+    if (view === 'global') {
+      fetchGlobalCorrelation();
+    }
   }, []);
 
   useEffect(() => {
@@ -34,9 +62,13 @@ const ColumnCorrelation = () => {
   const fetchTables = async () => {
     try {
       const response = await fetch('http://127.0.0.1:8000/list-tables');
-      setTables((await response.json()).tables);
+      if (isMounted.current) {
+        setTables((await response.json()).tables);
+      }
     } catch (error) {
-      setError('Failed to fetch tables');
+      if (isMounted.current) {
+        setError('Failed to fetch tables');
+      }
     }
   };
 
@@ -50,24 +82,84 @@ const ColumnCorrelation = () => {
         console.error(`Error fetching columns for ${table}:`, error);
       }
     }
-    setAvailableColumns(columnsData);
+    if (isMounted.current) {
+      setAvailableColumns(columnsData);
+    }
   };
 
   const fetchGlobalCorrelation = async () => {
-    setIsLoading(true);
-    setError(null);
-    resetMatrixData();
+    // Check if we have cached data that's less than 24 hours old (1 day)
+    const cacheAge = Date.now() - globalDataCache.current.timestamp;
+    const CACHE_EXPIRATION = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
+    const cacheValid = globalDataCache.current.data && 
+                     globalDataCache.current.columns && 
+                     globalDataCache.current.matrix && 
+                     cacheAge < CACHE_EXPIRATION;
+    
+    if (cacheValid) {
+      // Use cached data immediately
+      console.log("Using cached global correlation data");
+      if (isMounted.current) {
+        setCorrelationData(globalDataCache.current.data!);
+        setUniqueColumns(globalDataCache.current.columns!);
+        setMatrix(globalDataCache.current.matrix!);
+        setAiSummary(globalDataCache.current.summary || '');
+        return;
+      }
+    }
+    
+    if (isMounted.current) {
+      setIsLoading(true);
+      setError(null);
+      resetMatrixData();
+    }
     
     try {
       const response = await fetch('http://127.0.0.1:8000/global_correlation');
       const data = await response.json();
-      setCorrelationData(data.sorted_correlations);
-      processData(data.sorted_correlations);
-      setAiSummary(generateGlobalSummary(data.sorted_correlations));
+      
+      // Process the data
+      const columns = processData(data.sorted_correlations);
+      
+      // Generate a fresh matrix after processing data
+      const size = columns.length;
+      const correlationMatrix = Array.from({ length: size }, () => Array(size).fill(0));
+      
+      data.sorted_correlations.forEach(([col1, col2, value]) => {
+        const i = columns.indexOf(col1);
+        const j = columns.indexOf(col2);
+        if (i !== -1 && j !== -1) {
+          correlationMatrix[i][j] = value;
+          correlationMatrix[j][i] = value;
+        }
+      });
+      
+      // Set diagonal to 1
+      for (let i = 0; i < size; i++) correlationMatrix[i][i] = 1;
+      
+      const summary = generateGlobalSummary(data.sorted_correlations, columns.length);
+      
+      // Update the cache with all processed data
+      globalDataCache.current = {
+        data: data.sorted_correlations,
+        columns: columns,
+        matrix: correlationMatrix,
+        summary: summary,
+        timestamp: Date.now()
+      };
+      
+      if (isMounted.current) {
+        setCorrelationData(data.sorted_correlations);
+        setUniqueColumns(columns);
+        setMatrix(correlationMatrix);
+        setAiSummary(summary);
+        setIsLoading(false);
+      }
     } catch (error) {
-      setError('Failed to fetch global correlation data');
-    } finally {
-      setIsLoading(false);
+      if (isMounted.current) {
+        setError('Failed to fetch global correlation data');
+        setIsLoading(false);
+      }
     }
   };
 
@@ -97,13 +189,20 @@ const ColumnCorrelation = () => {
       
       const data = await response.json();
       const formattedData = formatCorrelationData(data.correlation);
-      setCorrelationData(formattedData);
-      processData(formattedData);
-      setAiSummary(generateCustomSummary(formattedData));
+      
+      if (isMounted.current) {
+        setCorrelationData(formattedData);
+        processData(formattedData);
+        setAiSummary(generateCustomSummary(formattedData));
+      }
     } catch (error) {
-      setError('Failed to fetch custom correlation data');
+      if (isMounted.current) {
+        setError('Failed to fetch custom correlation data');
+      }
     } finally {
-      setIsLoading(false);
+      if (isMounted.current) {
+        setIsLoading(false);
+      }
     }
   };
 
@@ -116,7 +215,10 @@ const ColumnCorrelation = () => {
     });
 
     const uniqueColumnsArray = Array.from(columns);
-    setUniqueColumns(uniqueColumnsArray);
+    
+    if (isMounted.current) {
+      setUniqueColumns(uniqueColumnsArray);
+    }
 
     const size = uniqueColumnsArray.length;
     const correlationMatrix = Array.from({ length: size }, () => Array(size).fill(0));
@@ -132,7 +234,12 @@ const ColumnCorrelation = () => {
 
     // Set diagonal to 1
     for (let i = 0; i < size; i++) correlationMatrix[i][i] = 1;
-    setMatrix(correlationMatrix);
+    
+    if (isMounted.current) {
+      setMatrix(correlationMatrix);
+    }
+    
+    return uniqueColumnsArray;
   };
 
   const formatCorrelationData = (data: CorrelationData): [string, string, number][] => {
@@ -146,13 +253,13 @@ const ColumnCorrelation = () => {
   };
 
   // AI Summary Functions
-  const generateGlobalSummary = (data: [string, string, number][]) => {
+  const generateGlobalSummary = (data: [string, string, number][], columnsCount: number) => {
     const strong = data.filter(([,, value]) => Math.abs(value) > 0.7);
     const moderate = data.filter(([,, value]) => Math.abs(value) > 0.4 && Math.abs(value) <= 0.7);
     
     return `Global Analysis: ${strong.length} strong correlations, ${moderate.length} moderate correlations
 Top correlation: ${strong[0]?.[0].split('.').pop()} and ${strong[0]?.[1].split('.').pop()} (r = ${strong[0]?.[2].toFixed(2) || 'N/A'})
-Total columns: ${uniqueColumns.length}`;
+Total columns: ${columnsCount}`;
   };
 
   const generateCustomSummary = (data: [string, string, number][]) => {
@@ -166,9 +273,28 @@ Strongest: ${strongest[0].split('.').pop()} and ${strongest[1].split('.').pop()}
   // Event Handlers
   const handleViewChange = (newView: ViewType) => {
     setView(newView);
-    resetMatrixData();
-    setError(null);
-    if (newView === 'global') fetchGlobalCorrelation();
+    if (newView === 'global') {
+      // When switching to global view, display cached data immediately if available
+      // and fetch fresh data in the background if needed
+      if (globalDataCache.current.data && globalDataCache.current.columns && globalDataCache.current.matrix) {
+        // Immediately display cached data
+        setCorrelationData(globalDataCache.current.data);
+        setUniqueColumns(globalDataCache.current.columns);
+        setMatrix(globalDataCache.current.matrix);
+        setAiSummary(globalDataCache.current.summary || '');
+      } else {
+        // Reset and show loading state if no cache
+        resetMatrixData();
+        setIsLoading(true);
+      }
+      
+      // Always fetch fresh data to ensure we have the latest
+      fetchGlobalCorrelation();
+    } else {
+      // For custom view, reset the matrix data
+      resetMatrixData();
+      setError(null);
+    }
   };
 
   const handleTableSelect = (table: string, checked: boolean) => {
@@ -205,6 +331,7 @@ Strongest: ${strongest[0].split('.').pop()} and ${strongest[1].split('.').pop()}
     setMatrix([]);
     setUniqueColumns([]);
     setCorrelationData([]);
+    setAiSummary('');
   };
 
   const getColor = (value: number) => ({
@@ -221,7 +348,19 @@ Strongest: ${strongest[0].split('.').pop()} and ${strongest[1].split('.').pop()}
     return 'Very Weak';
   };
 
-  const getSimpleName = (name: string) => name?.split('.').pop() || '';
+  // Improved function to show column names more clearly
+  const getSimpleName = (name: string) => {
+    if (!name) return '';
+    const parts = name.split('.');
+    // Return just the column name without table prefix
+    return parts.length > 1 ? parts[1] : parts[0];
+  };
+
+  // Function to get full column name for tooltips
+  const getFullName = (name: string) => {
+    if (!name) return '';
+    return name;
+  };
 
   return (
     <div className="p-4 bg-gradient-to-br from-blue-50 to-indigo-50">
@@ -242,12 +381,19 @@ Strongest: ${strongest[0].split('.').pop()} and ${strongest[1].split('.').pop()}
           </button>
         </div>
 
-        <button
-          onClick={() => setShowAI(!showAI)}
-          className={`p-2 rounded-full border ${showAI ? 'bg-blue-600 text-white border-blue-700' : 'bg-blue-100 border-blue-200'}`}
-        >
-          <Bot className="w-5 h-5" />
-        </button>
+        <div className="flex items-center gap-2">
+          {view === 'global' && globalDataCache.current.timestamp > 0 && (
+            <div className="text-xs text-gray-500">
+              Cached: {new Date(globalDataCache.current.timestamp).toLocaleTimeString()}
+            </div>
+          )}
+          <button
+            onClick={() => setShowAI(!showAI)}
+            className={`p-2 rounded-full border ${showAI ? 'bg-blue-600 text-white border-blue-700' : 'bg-blue-100 border-blue-200'}`}
+          >
+            <Bot className="w-5 h-5" />
+          </button>
+        </div>
       </div>
 
       {/* AI Tooltip */}
@@ -273,7 +419,7 @@ Strongest: ${strongest[0].split('.').pop()} and ${strongest[1].split('.').pop()}
 
       {/* Main Content */}
       <div className="flex flex-col lg:flex-row gap-3 h-full">
-        {/* Controls Panel - Original */}
+        {/* Controls Panel */}
         {view === 'custom' && !isLoading && (
           <div className="lg:w-1/4 bg-white rounded-lg shadow-md p-3 flex flex-col h-full border border-gray-200">
             <h3 className="text-sm font-semibold text-gray-800 mb-2 pb-1 border-b border-gray-200">Select Data</h3>
@@ -283,7 +429,7 @@ Strongest: ${strongest[0].split('.').pop()} and ${strongest[1].split('.').pop()}
               <h4 className="text-xs font-medium text-gray-700 mb-1 pb-1 border-b border-gray-100">Tables</h4>
               <div className="grid grid-cols-2 gap-1 text-xs">
                 {tables.map(table => (
-                  <label key={table} className="flex items-center border border-gray-100 p-1 rounded">
+                  <label key={table} className="flex items-center border border-gray-100 p-1 rounded hover:bg-blue-50 transition-colors">
                     <input
                       type="checkbox"
                       checked={selectedTables.includes(table)}
@@ -305,7 +451,7 @@ Strongest: ${strongest[0].split('.').pop()} and ${strongest[1].split('.').pop()}
                     <div key={table} className="mb-1 pb-1 border-b border-gray-100 last:border-b-0">
                       <div className="font-medium">{table}</div>
                       {availableColumns[table]?.map(column => (
-                        <label key={`${table}.${column}`} className="flex items-center ml-2 border border-gray-100 p-1 rounded my-1">
+                        <label key={`${table}.${column}`} className="flex items-center ml-2 border border-gray-100 p-1 rounded my-1 hover:bg-blue-50 transition-colors">
                           <input
                             type="checkbox"
                             checked={selectedColumns.includes(`${table}.${column}`)}
@@ -335,18 +481,19 @@ Strongest: ${strongest[0].split('.').pop()} and ${strongest[1].split('.').pop()}
           </div>
         )}
 
-        {/* Matrix Display - OPTIMIZED */}
+        {/* Matrix Display - ENHANCED */}
         {!isLoading && matrix.length > 0 && (
           <div className={`${view === 'custom' ? 'lg:w-3/4' : 'w-full'}`}>
             <div ref={matrixRef} className="bg-white rounded-lg shadow-md p-3 relative overflow-hidden h-full border border-gray-200">
-              {/* Cell Hover Tooltip - Enhanced */}
+              {/* Enhanced Cell Hover Tooltip */}
               {hoverData && (
                 <div 
-                  className="absolute z-20 rounded-md shadow-lg bg-blue-600 text-white p-2 text-sm border border-blue-800 transform transition-transform duration-200 scale-110"
+                  className="absolute z-20 rounded-md shadow-lg bg-blue-600 text-white p-2 text-sm border border-blue-800 transform transition-transform duration-200 ease-in-out scale-110"
                   style={{ 
                     left: `${hoverData.x}px`, 
                     top: `${hoverData.y}px`,
-                    transform: 'translate(-50%, -100%)'
+                    transform: 'translate(-50%, -100%)',
+                    boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.3)'
                   }}
                 >
                   <div className="font-medium">{hoverData.col1} × {hoverData.col2}</div>
@@ -357,7 +504,10 @@ Strongest: ${strongest[0].split('.').pop()} and ${strongest[1].split('.').pop()}
               
               {/* Enhanced Legend with larger buttons */}
               <div className="mb-2 flex justify-between items-center border-b border-gray-200 pb-2">
-                <h3 className="text-sm font-medium text-gray-700">Correlation Matrix</h3>
+                <h3 className="text-sm font-medium text-gray-700">
+                  Correlation Matrix
+                  {uniqueColumns.length > 0 && <span className="ml-2 text-xs text-gray-500">({uniqueColumns.length} columns)</span>}
+                </h3>
                 <div className="flex gap-2 items-center">
                   <div className="flex items-center">
                     <div className="w-5 h-5 bg-white border border-gray-300 rounded-sm"></div>
@@ -378,7 +528,7 @@ Strongest: ${strongest[0].split('.').pop()} and ${strongest[1].split('.').pop()}
                 </div>
               </div>
               
-              {/* Optimized Matrix with Zoom Effect */}
+              {/* Enhanced Matrix with Improved Column Names and Hover Effects */}
               <div className="overflow-auto" style={{maxHeight: "calc(100vh - 240px)"}}>
                 <table className="text-xs w-full table-fixed border-collapse">
                   <thead>
@@ -390,13 +540,17 @@ Strongest: ${strongest[0].split('.').pop()} and ${strongest[1].split('.').pop()}
                           className="p-1 w-10 h-16 overflow-hidden border border-gray-300 bg-gray-50 sticky top-0 z-10"
                           onMouseEnter={() => setZoomedColumn(idx)}
                           onMouseLeave={() => setZoomedColumn(null)}
+                          title={getFullName(col)} // Show full column name on hover
                         >
-                          <div className="transform -rotate-45 origin-left truncate w-20 transition-all duration-200"
-                               style={{
-                                transform: zoomedColumn === idx ? 'rotate(-45deg) scale(1.2)' : 'rotate(-45deg)',
-                                fontWeight: zoomedColumn === idx ? 'bold' : 'normal',
-                                color: zoomedColumn === idx ? 'rgb(37, 99, 235)' : 'inherit'
-                               }}>
+                          <div 
+                            className="transform -rotate-45 origin-left truncate w-20 transition-all duration-200 whitespace-nowrap"
+                            style={{
+                              transform: zoomedColumn === idx ? 'rotate(-45deg) scale(1.2)' : 'rotate(-45deg)',
+                              fontWeight: zoomedColumn === idx ? 'bold' : 'normal',
+                              color: zoomedColumn === idx ? 'rgb(37, 99, 235)' : 'inherit',
+                              textShadow: zoomedColumn === idx ? '0px 1px 2px rgba(0,0,0,0.1)' : 'none'
+                            }}
+                          >
                             {getSimpleName(col)}
                           </div>
                         </th>
@@ -410,26 +564,32 @@ Strongest: ${strongest[0].split('.').pop()} and ${strongest[1].split('.').pop()}
                           className="p-1 font-medium truncate border border-gray-300 bg-gray-50 sticky left-0 z-10"
                           onMouseEnter={() => setZoomedColumn(i + 100)} // Use i+100 to differentiate from column headers
                           onMouseLeave={() => setZoomedColumn(null)}
+                          title={getFullName(uniqueColumns[i])} // Show full column name on hover
                         >
-                          <div className="transition-all duration-200"
-                               style={{
-                                 fontWeight: zoomedColumn === i + 100 ? 'bold' : 'normal',
-                                 transform: zoomedColumn === i + 100 ? 'scale(1.1)' : 'scale(1)',
-                                 color: zoomedColumn === i + 100 ? 'rgb(37, 99, 235)' : 'inherit'
-                               }}>
+                          <div 
+                            className="transition-all duration-200 whitespace-nowrap"
+                            style={{
+                              fontWeight: zoomedColumn === i + 100 ? 'bold' : 'normal',
+                              transform: zoomedColumn === i + 100 ? 'scale(1.05)' : 'scale(1)',
+                              color: zoomedColumn === i + 100 ? 'rgb(37, 99, 235)' : 'inherit',
+                              textShadow: zoomedColumn === i + 100 ? '0px 1px 2px rgba(0,0,0,0.1)' : 'none'
+                            }}
+                          >
                             {getSimpleName(uniqueColumns[i])}
                           </div>
                         </td>
                         {row.map((value, j) => (
                           <td
                             key={j}
-                            className="p-0 border border-gray-300 hover:shadow-md transition-all duration-200"
+                            className="p-0 border border-gray-300 transition-all duration-200 hover:shadow-lg"
                             style={{
                               ...getColor(value),
                               width: '10px',
                               height: '10px',
                               transition: 'all 0.2s ease-in-out',
-                              transform: (selectedCell === `${i}-${j}`) ? 'scale(1.15)' : 'scale(1)'
+                              transform: (selectedCell === `${i}-${j}`) ? 'scale(1.2)' : 'scale(1)',
+                              boxShadow: (selectedCell === `${i}-${j}`) ? '0 4px 8px rgba(0, 0, 0, 0.15)' : 'none',
+                              zIndex: (selectedCell === `${i}-${j}`) ? 5 : 'auto'
                             }}
                             onMouseEnter={(e) => handleCellHover(e, i, j, value)}
                             onMouseLeave={() => { setHoverData(null); setSelectedCell(null); }}

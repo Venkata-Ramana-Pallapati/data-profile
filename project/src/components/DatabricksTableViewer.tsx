@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Upload, Trash2, Database, FileSpreadsheet, Loader2, List, RefreshCw, Info, Save, Eye } from 'lucide-react';
+import { Trash2, Database, FileSpreadsheet, Loader2, List, RefreshCw, Info, Save, Eye, ArrowLeft } from 'lucide-react';
 
 const DataWarehouseUI = () => {
   const [tables, setTables] = useState([]);
@@ -25,38 +25,6 @@ const DataWarehouseUI = () => {
       console.error('Error fetching tables:', error);
     } finally {
       setIsLoading(false);
-    }
-  };
-
-  const handleFileUpload = async (event) => {
-    const files = event.target.files;
-    if (!files || files.length === 0) return;
-  
-    setIsLoading(true);
-    setUploadStatus('Uploading...');
-  
-    const formData = new FormData();
-    for (let i = 0; i < files.length; i++) {
-      formData.append('files', files[i]);
-    }
-  
-    try {
-      const response = await fetch('http://127.0.0.1:8000/upload-files/', {
-        method: 'POST',
-        body: formData,
-      });
-  
-      if (response.ok) {
-        setUploadStatus('Upload successful!');
-        fetchTables();
-      } else {
-        setUploadStatus('Upload failed.');
-      }
-    } catch (error) {
-      setUploadStatus('Upload failed.');
-    } finally {
-      setIsLoading(false);
-      setTimeout(() => setUploadStatus(''), 3000);
     }
   };
 
@@ -125,6 +93,17 @@ const DataWarehouseUI = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 p-6">
       <div className="max-w-6xl mx-auto bg-white/90 rounded-xl shadow-xl p-8 backdrop-blur-sm">
+        {/* Back button in top left corner */}
+        {activeSection === 'metadata' && (
+          <button
+            onClick={() => setActiveSection('tables')}
+            className="mb-4 flex items-center gap-1 text-gray-600 hover:text-blue-500 transition-colors"
+          >
+            <ArrowLeft size={18} />
+            <span>Back to Tables</span>
+          </button>
+        )}
+        
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <h1 className="text-3xl font-bold text-gray-800 flex items-center gap-3">
@@ -157,30 +136,8 @@ const DataWarehouseUI = () => {
 
         {activeSection === 'tables' && (
           <>
-            {/* Action Buttons */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-              <div className="relative">
-                <input
-                  type="file"
-                  accept=".csv"
-                  onChange={handleFileUpload}
-                  className="hidden"
-                  id="file-upload"
-                  multiple
-                />
-                <label
-                  htmlFor="file-upload"
-                  className={`
-                    inline-flex items-center justify-center w-full gap-2 px-4 py-3 rounded-lg
-                    ${isLoading ? 'bg-gray-400' : 'bg-blue-500 hover:bg-blue-600'}
-                    text-white cursor-pointer transition-colors duration-200
-                  `}
-                >
-                  {isLoading ? <Loader2 className="animate-spin" /> : <Upload />}
-                  Upload CSV
-                </label>
-              </div>
-
+            {/* Action Buttons - Upload button removed */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
               <button
                 onClick={fetchTables}
                 className="flex items-center justify-center gap-2 px-4 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors duration-200"

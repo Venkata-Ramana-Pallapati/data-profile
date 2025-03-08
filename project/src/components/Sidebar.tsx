@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from "react";
-import { Database, LineChart, Terminal, Brain, AlertCircle, GitBranch, Table2, Key, BarChart3, Layers, Clock, ChevronDown, ChevronRight } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Database, LineChart, Terminal, Brain, AlertCircle, GitBranch, Table2, Key, BarChart3, Layers, Clock, ChevronDown, ChevronRight, List } from "lucide-react";
 import DataViolationsPopup from "./DataViolationsPopup"; // Import the violations popup
+import DataQuality from "./DataQuality";
 
 // Define interfaces
 interface DataViolationsResponse {
@@ -9,6 +10,9 @@ interface DataViolationsResponse {
       [columnName: string]: string[];
     };
   };
+}
+interface DataQualityProps {
+  value: string; // Ensure value prop is defined
 }
 
 interface SidebarProps {
@@ -19,15 +23,15 @@ interface SidebarProps {
   triggerDataProfiling: () => void;
 }
 
-interface DataProfilingOverviewProps {
-  onSubModuleChange: (subModule: string) => void;
-  activeModule: string;
-  moduleStatuses: { [key: string]: ModuleStatus };
-  triggerModule: (moduleName: string) => void;
-  triggerAllModules: () => void;
+interface TableItem {
+  name: string;
+  selected: boolean;
 }
 
 type ModuleStatus = 'idle' | 'loading' | 'ready';
+
+// Local storage key - use a consistent key for storing and retrieving
+const SELECTED_TABLE_KEY = 'selectedDatabaseTable';
 
 // Main Sidebar Component
 export function Sidebar({ 
@@ -41,6 +45,27 @@ export function Sidebar({
   const [isPopupOpen, setIsPopupOpen] = useState(false);
   const [expandedCategories, setExpandedCategories] = useState<{[key: string]: boolean}>({});
   const [showDataProfilingSubMenu, setShowDataProfilingSubMenu] = useState(false);
+  // New states for tables list
+  const [tables, setTables] = useState<TableItem[]>([]);
+  const [isTableListVisible, setIsTableListVisible] = useState(false);
+  const [isLoadingTables, setIsLoadingTables] = useState(false);
+  const [selectedTableName, setSelectedTableName] = useState<string | null>(null);
+
+  // Initialize selected table from local storage when component mounts
+  useEffect(() => {
+    const savedTable = localStorage.getItem(SELECTED_TABLE_KEY);
+    console.log("Loading saved table from localStorage:", savedTable);
+    if (savedTable) {
+      try {
+        // Handle both string and JSON formats for backward compatibility
+        const parsedTable = savedTable.startsWith('"') ? JSON.parse(savedTable) : savedTable;
+        setSelectedTableName(parsedTable);
+      } catch (e) {
+        // If parsing fails, use it as a plain string
+        setSelectedTableName(savedTable);
+      }
+    }
+  }, []);
 
   // Fetch violations count
   useEffect(() => {
@@ -57,36 +82,117 @@ export function Sidebar({
       .catch((err) => console.error("Error fetching violations:", err));
   }, []);
 
+  // Fetch tables function
+  const fetchTables = () => {
+    setIsLoadingTables(true);
+    fetch("http://127.0.0.1:8000/list-tables/")
+      .then(res => res.json())
+      .then(data => {
+        console.log("Received table data:", data);
+        // Handle the response format correctly - data.tables is an array
+        if (data && data.tables && Array.isArray(data.tables)) {
+          // Create table items and mark the previously selected one
+          const tableItems = data.tables.map((table: string) => ({ 
+            name: table, 
+            selected: table === selectedTableName 
+          }));
+          setTables(tableItems);
+          console.log("Table names processed:", tableItems);
+        } else {
+          console.error("Unexpected data format:", data);
+          // Fallback to empty array if format is unexpected
+          setTables([]);
+        }
+        setIsLoadingTables(false);
+      })
+      .catch(err => {
+        console.error("Error fetching tables:", err);
+        setIsLoadingTables(false);
+        // Mock data in case endpoint fails
+        const mockTables = [
+          "customers", "orders", "product_categories", "products",
+          "retailers", "sales", "stores", "shelf_positions"
+        ];
+        setTables(mockTables.map(name => ({ 
+          name, 
+          selected: name === selectedTableName 
+        })));
+      });
+  };
+
+  // Select a table and automatically trigger fact and dimensions
+  const selectTable = (tableName: string) => {
+    // Update state
+    setSelectedTableName(tableName);
+    
+    // Update tables list
+    setTables(prev => prev.map(table => ({
+      ...table,
+      selected: table.name === tableName
+    })));
+    
+    // Save to local storage - store as plain string, not as stringified JSON
+    localStorage.setItem(SELECTED_TABLE_KEY, tableName);
+    console.log(`Selected table: ${tableName} (saved to local storage)`);
+    
+    // Automatically trigger fact and dimensions (removed need for Apply button)
+    triggerFactAndDimensions(tableName);
+  };
+
+  // Function to trigger fact and dimensions
+  const triggerFactAndDimensions = (tableName: string) => {
+    console.log(`Automatically applying table selection: ${tableName}`);
+    
+    // Create and dispatch a custom event with the selected table name
+    const event = new CustomEvent('tableSelected', { 
+      detail: { tableName: tableName } 
+    });
+    window.dispatchEvent(event);
+    
+    // Store in a global variable for easier access by other components
+    window.selectedTableName = tableName;
+    
+    // Set "Fact Table And Dimension Table" as the active submodule
+    if (onSubModuleChange) {
+      // Make sure we're in the data profiler module
+      if (activeModule !== "dataProfiler") {
+        onModuleChange("dataProfiler");
+        setShowDataProfilingSubMenu(true);
+      }
+      
+      // First ensure the proper category is expanded
+      setExpandedCategories(prev => ({
+        ...prev,
+        relationships: true
+      }));
+      
+      // Then change to the "Fact Table And Dimension Table" submodule
+      onSubModuleChange("Fact Table And Dimension Table");
+      
+      // Create and dispatch a custom event specifically for fact and dimensions component
+      const factDimEvent = new CustomEvent('loadFactAndDimensions', { 
+        detail: { tableName: tableName } 
+      });
+      window.dispatchEvent(factDimEvent);
+      
+      console.log("Triggered Fact Table And Dimension Table view");
+    }
+  };
+
   const mainModules = [
     { id: "dataProfiler", name: "Data Profiling", icon: Database },
-    { id: "anomaly", name: "Anomaly Detection", icon: LineChart },
-    { id: "sqlGenerator", name: "SQL Generator", icon: Terminal },
-    { id: "nlp", name: "Natural Language Processing", icon: Brain },
   ];
-
+  
   // Reorganized data profiling submodules with categories
   const dataProfilingCategories = [
-    { 
-      id: "dataAnalysis",
-      name: "Data Analysis",
-      modules: [
-        "Data Quality",
-        "Data Frequency",
-        "Statistical Analysis",
-        "Data Granularity",
-      ] 
-    },
     { 
       id: "relationships",
       name: "Relationships", 
       modules: [
         "Column Correlation",
-        "Fact Table And Dimension Table",
         "Primary Key Foreign Key Relation",
       ] 
     },
-   
-    
   ];
 
   // Handle module change
@@ -96,6 +202,12 @@ export function Sidebar({
     if (moduleId === "dataProfiler") {
       // Toggle sub-menu visibility when clicking on Data Profiling
       setShowDataProfilingSubMenu(!showDataProfilingSubMenu);
+      
+      // Only fetch tables if they haven't been loaded yet and we're opening the menu
+      if (!showDataProfilingSubMenu && tables.length === 0) {
+        fetchTables();
+        setIsTableListVisible(true);
+      }
       
       // Only change module and trigger if it's not already active
       if (activeModule !== "dataProfiler") {
@@ -118,6 +230,39 @@ export function Sidebar({
     }
   };
 
+  // Handle submodule selection
+  const handleSubModuleClick = (subModuleName: string) => {
+    if (onSubModuleChange) {
+      onSubModuleChange(subModuleName);
+      
+      // If "Data Quality" is selected, dispatch another table selected event for components that might've missed it
+      if (subModuleName === "Data Quality" && selectedTableName) {
+        // Dispatch event with current table name
+        const event = new CustomEvent('dataQualitySelected', { 
+          detail: { tableName: selectedTableName } 
+        });
+        window.dispatchEvent(event);
+      }
+      
+      // If "Fact Table And Dimension Table" is selected, dispatch the fact dimensions event
+      if (subModuleName === "Fact Table And Dimension Table" && selectedTableName) {
+        const factDimEvent = new CustomEvent('loadFactAndDimensions', { 
+          detail: { tableName: selectedTableName } 
+        });
+        window.dispatchEvent(factDimEvent);
+        console.log("Triggered Fact Table And Dimension Table view from submodule click");
+      }
+    }
+  };
+
+  // Toggle table list visibility
+  const toggleTableList = () => {
+    setIsTableListVisible(!isTableListVisible);
+    if (!isTableListVisible && tables.length === 0) {
+      fetchTables();
+    }
+  };
+
   // Toggle category expansion
   const toggleCategory = (categoryId: string) => {
     setExpandedCategories(prev => ({
@@ -132,6 +277,11 @@ export function Sidebar({
       <div className="w-64 bg-gray-800 text-white h-screen fixed top-0 left-0 overflow-y-auto">
         <div className="p-4 border-b border-gray-700">
           <h1 className="text-2xl font-bold">SigmaDQ</h1>
+          {selectedTableName && (
+            <div className="mt-1 text-sm text-blue-300">
+              <span className="font-medium">Current table:</span> {selectedTableName}
+            </div>
+          )}
         </div>
         
         <nav className="flex-1">
@@ -148,12 +298,73 @@ export function Sidebar({
                   {module.name}
                 </button>
                 
-                {activeModule === "dataProfiler" && module.id === "dataProfiler" && showDataProfilingSubMenu && onSubModuleChange && (
-                  <div className="ml-4 mt-2 space-y-2">
-                    {dataProfilingCategories.map((category) => (
-                      <div key={category.id}>
-                        {/* Collapsible category button */}
-                        {category.id !== "dashboard" ? (
+                {/* Show List of Tables right after Data Profiling button when active */}
+                {activeModule === "dataProfiler" && module.id === "dataProfiler" && showDataProfilingSubMenu && (
+                  <>
+                    {/* List of Tables Section */}
+                    <div className="ml-4 mb-2">
+                      <button 
+                        onClick={toggleTableList}
+                        className="w-full flex items-center justify-between p-2 rounded-md text-sm font-medium hover:bg-gray-700"
+                      >
+                        <span>QualityMetricsDB</span>
+                        {isTableListVisible ? 
+                          <ChevronDown className="w-4 h-4" /> : 
+                          <ChevronRight className="w-4 h-4" />
+                        }
+                      </button>
+                      
+                      {isTableListVisible && (
+                        <div className="mt-1 ml-2 bg-gray-700 p-2 rounded-md">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-xs">Select one table:</span>
+                          </div>
+                          
+                          {isLoadingTables ? (
+                            <div className="flex items-center justify-center p-2">
+                              <div className="animate-spin rounded-full h-3 w-3 border-t-2 border-b-2 border-blue-500"></div>
+                              <span className="ml-2 text-xs">Loading...</span>
+                            </div>
+                          ) : tables.length > 0 ? (
+                            <div className="max-h-48 overflow-y-auto">
+                              {tables.map((table, idx) => (
+                                <div 
+                                  key={idx} 
+                                  className={`flex items-center p-1 hover:bg-gray-600 rounded cursor-pointer text-xs ${
+                                    table.selected ? 'bg-blue-500 bg-opacity-30' : ''
+                                  }`}
+                                  onClick={() => selectTable(table.name)}
+                                >
+                                  <input 
+                                    type="radio" 
+                                    id={`sidebar-table-${idx}`}
+                                    name="tableSelection"
+                                    checked={table.selected} 
+                                    onChange={() => selectTable(table.name)}
+                                    className="mr-1 h-3 w-3 text-blue-500 cursor-pointer"
+                                  />
+                                  <label 
+                                    htmlFor={`sidebar-table-${idx}`}
+                                    className="cursor-pointer flex-grow truncate"
+                                  >
+                                    {table.name}
+                                  </label>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="text-center p-2 text-xs text-gray-400">
+                              No tables found
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    
+                    {/* Categories and Submodules */}
+                    <div className="ml-4 mt-2 space-y-2">
+                      {dataProfilingCategories.map((category) => (
+                        <div key={category.id}>
                           <button
                             onClick={() => toggleCategory(category.id)}
                             className="w-full flex items-center justify-between p-2 rounded-md text-sm font-medium hover:bg-gray-700"
@@ -164,58 +375,34 @@ export function Sidebar({
                               <ChevronRight className="w-4 h-4" />
                             }
                           </button>
-                        ) : (
-                          // Dashboard is not collapsible
-                          <ul className="space-y-1">
-                            {category.modules.map((subModuleName) => (
-                              <li key={subModuleName}>
-                                <button
-                                  onClick={() => {
-                                    if (onSubModuleChange) {
-                                      onSubModuleChange(subModuleName);
-                                    }
-                                  }}
-                                  className={`w-full text-left p-2 rounded-md text-sm ${
-                                    subModule === subModuleName ? "bg-gray-700" : "hover:bg-gray-700"
-                                  }`}
-                                >
-                                  {subModuleName}
-                                </button>
-                              </li>
-                            ))}
-                          </ul>
-                        )}
-                        
-                        {/* Submodules for the category */}
-                        {expandedCategories[category.id] && category.id !== "dashboard" && (
-                          <ul className="ml-2 mt-1 space-y-1">
-                            {category.modules.map((subModuleName) => (
-                              <li key={subModuleName}>
-                                <button
-                                  onClick={() => {
-                                    if (onSubModuleChange) {
-                                      onSubModuleChange(subModuleName);
-                                    }
-                                  }}
-                                  className={`w-full text-left p-2 rounded-md text-sm ${
-                                    subModule === subModuleName ? "bg-gray-700" : "hover:bg-gray-700"
-                                  }`}
-                                >
-                                  {subModuleName}
-                                  {/* Show Red Badge if Violations Exist */}
-                                  {subModuleName === "Business Rule Violations" && violationsCount > 0 && (
-                                    <span className="ml-2 bg-red-600 text-white text-xs rounded-full px-2">
-                                      {violationsCount}
-                                    </span>
-                                  )}
-                                </button>
-                              </li>
-                            ))}
-                          </ul>
-                        )}
-                      </div>
-                    ))}
-                  </div>
+                          
+                          {/* Submodules for the category */}
+                          {expandedCategories[category.id] && (
+                            <ul className="ml-2 mt-1 space-y-1">
+                              {category.modules.map((subModuleName) => (
+                                <li key={subModuleName}>
+                                  <button
+                                    onClick={() => handleSubModuleClick(subModuleName)}
+                                    className={`w-full text-left p-2 rounded-md text-sm ${
+                                      subModule === subModuleName ? "bg-gray-700" : "hover:bg-gray-700"
+                                    }`}
+                                  >
+                                    {subModuleName}
+                                    {/* Show Red Badge if Violations Exist */}
+                                    {subModuleName === "Business Rule Violations" && violationsCount > 0 && (
+                                      <span className="ml-2 bg-red-600 text-white text-xs rounded-full px-2">
+                                        {violationsCount}
+                                      </span>
+                                    )}
+                                  </button>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </>
                 )}
               </li>
             ))}
@@ -242,293 +429,9 @@ export function Sidebar({
   );
 }
 
-// Data Profiling Overview Component
-export function DataProfilingOverview({ 
-  onSubModuleChange, 
-  activeModule,
-  moduleStatuses,
-  triggerModule,
-  triggerAllModules
-}: DataProfilingOverviewProps) {
-  // State for collapsible sections
-  const [expandedSections, setExpandedSections] = useState({
-    dataAnalysis: true,
-    relationships: true,
-    violations: true
-  });
-
-  // Toggle section visibility
-  const toggleSection = (section: string) => {
-    setExpandedSections(prev => ({
-      ...prev,
-      [section]: !prev[section]
-    }));
-  };
-
-  // Reorganized features into categories
-  const featureCategories = [
-    {
-      id: "dataAnalysis",
-      title: "Data Analysis",
-      features: [
-        { icon: Database, title: "Data Quality", description: "Analyze data completeness, accuracy, and consistency", color: "from-blue-500 to-blue-600", module: "Data Quality" },
-        { icon: Clock, title: "Data Frequency", description: "Monitor data update patterns", color: "from-cyan-500 to-cyan-600", module: "Data Frequency" },
-        { icon: BarChart3, title: "Statistical Analysis", description: "Get detailed statistical insights", color: "from-pink-500 to-pink-600", module: "Statistical Analysis" },
-        { icon: Layers, title: "Data Granularity", description: "Analyze data at different levels", color: "from-indigo-500 to-indigo-600", module: "Data Granularity" },
-      ]
-    },
-    {
-      id: "relationships",
-      title: "Relationships",
-      features: [
-        { icon: GitBranch, title: "Column Correlation", description: "Discover relationships between data columns", color: "from-purple-500 to-purple-600", module: "Column Correlation" },
-        { icon: Table2, title: "Fact & Dimension Tables", description: "Identify and analyze table relationships", color: "from-green-500 to-green-600", module: "Fact Table And Dimension Table" },
-        { icon: Key, title: "Primary & Foreign Keys", description: "Map key relationships across tables", color: "from-yellow-500 to-yellow-600", module: "Primary Key Foreign Key Relation" },
-      ]
-    },
-    {
-      id: "violations",
-      title: "Violations",
-      features: [
-        { icon: AlertCircle, title: "Business Rule Violations", description: "Detect and analyze rule violations", color: "from-red-500 to-red-600", module: "Business Rule Violations" },
-      ]
-    }
-  ];
-
-  return (
-    <div className="p-8">
-      <div className="max-w-6xl mx-auto">
-        <div className="text-center mb-12">
-          <h1 className="text-4xl font-bold text-gray-900 mb-4">Data Profiling</h1>
-          <p className="text-lg text-gray-600">Comprehensive tools for analyzing and understanding your data structure and quality</p>
-          
-          {/* Add an explicit trigger button */}
-          <button 
-            onClick={triggerAllModules}
-            className="mt-6 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg shadow transition-all"
-          >
-            Run All Data Profiling
-          </button>
-        </div>
-
-        {/* Render each category with collapsible functionality */}
-        {featureCategories.map((category, idx) => (
-          <div key={idx} className="mb-10">
-            <button 
-              onClick={() => toggleSection(category.id)}
-              className="flex items-center justify-between w-full text-left mb-6"
-            >
-              <h2 className="text-2xl font-bold text-gray-800">{category.title}</h2>
-              {expandedSections[category.id as keyof typeof expandedSections] ? 
-                <ChevronDown className="w-6 h-6 text-gray-600" /> : 
-                <ChevronRight className="w-6 h-6 text-gray-600" />
-              }
-            </button>
-            
-            {expandedSections[category.id as keyof typeof expandedSections] && (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {category.features.map((feature, index) => (
-                  <button
-                    key={index}
-                    onClick={() => {
-                      console.log(`Feature clicked: ${feature.module}, Status: ${moduleStatuses[feature.module]}`);
-                      
-                      // Check if module data is not ready or loading, only then trigger it
-                      if (moduleStatuses[feature.module] === 'idle') {
-                        console.log(`Triggering module: ${feature.module} (was idle)`);
-                        triggerModule(feature.module);
-                      } else if (moduleStatuses[feature.module] === 'loading') {
-                        console.log(`Module ${feature.module} is already loading`);
-                      } else if (moduleStatuses[feature.module] === 'ready') {
-                        console.log(`Module ${feature.module} is already ready - not triggering again`);
-                      }
-                      
-                      // Always navigate to the submodule
-                      onSubModuleChange(feature.module);
-                    }}
-                    className={`text-left bg-gradient-to-br ${feature.color} p-6 rounded-xl text-white transform transition-all duration-200 hover:scale-105 hover:shadow-lg relative`}
-                  >
-                    <feature.icon className="w-10 h-10 mb-4" />
-                    <h3 className="text-xl font-semibold mb-2">{feature.title}</h3>
-                    <p className="text-white/80">{feature.description}</p>
-                    
-                    {/* Loading indicator */}
-                    {moduleStatuses[feature.module] === 'loading' && (
-                      <div className="absolute top-2 right-2">
-                        <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-white"></div>
-                      </div>
-                    )}
-                    
-                    {/* Ready indicator */}
-                    {moduleStatuses[feature.module] === 'ready' && (
-                      <div className="absolute top-2 right-2">
-                        <div className="h-4 w-4 rounded-full bg-green-300"></div>
-                      </div>
-                    )}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// Main application component
-export function App() {
-  const [activeModule, setActiveModule] = useState("dataProfiler");
-  const [subModule, setSubModule] = useState<string | undefined>(undefined);
-  const [moduleStatuses, setModuleStatuses] = useState<{[key: string]: ModuleStatus}>({});
-  
-  const features = [
-    "Data Quality",
-    "Data Frequency",
-    "Column Correlation",
-    "Fact Table And Dimension Table", 
-    "Primary Key Foreign Key Relation",
-    "Statistical Analysis",
-    "Data Granularity",
-    "Business Rule Violations"
-  ];
-
-  // Initialize module statuses
-  useEffect(() => {
-    const initialStatuses: {[key: string]: ModuleStatus} = {};
-    features.forEach(feature => {
-      initialStatuses[feature] = 'idle';
-    });
-    setModuleStatuses(initialStatuses);
-  }, []);
-
-  // Function to handle module status change
-  const triggerModule = (moduleName: string) => {
-    console.log(`Triggering module: ${moduleName}`);
-    
-    // Skip if already loading or ready
-    if (moduleStatuses[moduleName] === 'loading' || moduleStatuses[moduleName] === 'ready') {
-      console.log(`Module ${moduleName} already ${moduleStatuses[moduleName]} - skipping trigger`);
-      return;
-    }
-    
-    // Set module to loading state
-    setModuleStatuses(prev => ({...prev, [moduleName]: 'loading'}));
-    
-    // Simulate data processing
-    const processingTime = 2000 + Math.random() * 3000; // 2-5 seconds
-    setTimeout(() => {
-      setModuleStatuses(prev => ({...prev, [moduleName]: 'ready'}));
-      console.log(`Module ${moduleName} is now ready`);
-    }, processingTime);
-  };
-
-  // Function to trigger all submodules
-  const triggerDataProfiling = () => {
-    console.log("=== TRIGGERING ALL DATA PROFILING SUBMODULES ===");
-    
-    // Trigger all submodules in background
-    features.forEach(feature => {
-      // Only trigger if not already loading or ready
-      if (moduleStatuses[feature] === 'idle') {
-        console.log(`Queuing module for processing: ${feature}`);
-        triggerModule(feature);
-      } else {
-        console.log(`Module ${feature} already ${moduleStatuses[feature]} - skipping trigger`);
-      }
-    });
-    
-    // Navigate to overview if not already there
-    if (!subModule) {
-      setSubModule("Data Analysis Dashboard");
-    }
-  };
-
-  // Handle module change
-  const handleModuleChange = (module: string) => {
-    setActiveModule(module);
-    
-    // Reset submodule selection when changing main modules
-    if (module !== "dataProfiler") {
-      setSubModule(undefined);
-    } else {
-      // Set to dashboard without auto-triggering
-      setSubModule("Data Analysis Dashboard");
-    }
-  };
-  
-  // Handle submodule change
-  const handleSubModuleChange = (newSubModule: string) => {
-    setSubModule(newSubModule);
-    
-    // Ensure module is triggered if not already
-    if (moduleStatuses[newSubModule] === 'idle') {
-      triggerModule(newSubModule);
-    } else {
-      console.log(`Module ${newSubModule} is already ${moduleStatuses[newSubModule]} - not triggering`);
-    }
-  };
-  
-  // Render the appropriate content based on active module and submodule
-  const renderContent = () => {
-    if (activeModule === "dataProfiler") {
-      if (!subModule || subModule === "Data Analysis Dashboard") {
-        return (
-          <DataProfilingOverview 
-            onSubModuleChange={handleSubModuleChange}
-            activeModule={activeModule}
-            moduleStatuses={moduleStatuses}
-            triggerModule={triggerModule}
-            triggerAllModules={triggerDataProfiling}
-          />
-        );
-      } else {
-        // Render the appropriate submodule content
-        return (
-          <div className="p-8 ml-64">
-            <div className="max-w-6xl mx-auto">
-              <h2 className="text-2xl font-bold mb-4">{subModule}</h2>
-              
-              {moduleStatuses[subModule] === 'loading' && (
-                <div className="flex flex-col items-center justify-center p-12">
-                  <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mb-4"></div>
-                  <p className="text-lg text-gray-600">Loading {subModule} data...</p>
-                </div>
-              )}
-              
-              {moduleStatuses[subModule] === 'ready' && (
-                <div className="bg-white p-6 rounded-lg shadow-md">
-                  <p>Data for {subModule} is ready and would be displayed here.</p>
-                  {/* Here you would render the actual content for each submodule */}
-                </div>
-              )}
-            </div>
-          </div>
-        );
-      }
-    } else {
-      // Render content for other main modules
-      return (
-        <div className="p-8 ml-64">
-          <h2 className="text-2xl font-bold mb-4">{activeModule}</h2>
-          <p>This is the {activeModule} module content.</p>
-        </div>
-      );
-    }
-  };
-  
-  return (
-    <div>
-      <Sidebar 
-        activeModule={activeModule}
-        onModuleChange={handleModuleChange}
-        subModule={subModule}
-        onSubModuleChange={handleSubModuleChange}
-        triggerDataProfiling={triggerDataProfiling}
-      />
-      <div className="ml-64">
-        {renderContent()}
-      </div>
-    </div>
-  );
+// Add a global type definition for the window object
+declare global {
+  interface Window {
+    selectedTableName?: string;
+  }
 }

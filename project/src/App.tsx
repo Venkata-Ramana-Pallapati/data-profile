@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Login } from "./components/Login";
 import { Sidebar } from "./components/Sidebar";
-import { DataQuality } from "./components/DataQuality";
+import  DataQuality  from "./components/DataQuality";
 import { Dashboard } from "./components/Dashboard";
 import { DataProfilingOverview } from "./components/DataProfilingOverview";
 import FactAndDimensions from "./components/FactAndDimensions";
