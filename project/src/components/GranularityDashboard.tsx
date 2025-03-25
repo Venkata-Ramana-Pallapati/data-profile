@@ -136,45 +136,26 @@ const CustomTooltip = ({ active, payload }: { active?: boolean; payload?: any })
   return null;
 };
 
-const LLMAnalysisBox = ({ analysis, isVisible, onToggle }: { 
-  analysis?: string, 
-  isVisible: boolean, 
-  onToggle: () => void
-}) => {
+// Modified LLM Analysis Box for sidebar layout
+const LLMAnalysisBox = ({ analysis }: { analysis?: string }) => {
   if (!analysis) return null;
   
   return (
-    <div className="mt-8 mb-4">
-      {/* Toggle button */}
-      <button 
-        onClick={onToggle}
-        className="w-full bg-gradient-to-r from-indigo-500 to-blue-500 hover:from-indigo-600 hover:to-blue-600 text-white p-4 rounded-t-xl shadow-md transition-all duration-300 flex items-center justify-between"
-      >
-        <div className="flex items-center gap-3">
-          <div className="p-2 bg-white/20 rounded-full">
-            <BrainCircuit className="h-5 w-5 text-white" />
-          </div>
-          <span className="text-lg font-semibold">AI Analysis</span>
+    <div className="bg-gradient-to-r from-indigo-50 to-blue-50 p-6 rounded-xl border border-blue-200 shadow-lg h-full">
+      <div className="flex items-center gap-3 mb-4">
+        <div className="p-2 bg-gradient-to-r from-indigo-500 to-blue-500 rounded-full">
+          <BrainCircuit className="h-5 w-5 text-white" />
         </div>
-        <div>
-          {isVisible ? 
-            <ChevronUp className="h-5 w-5 text-white" /> : 
-            <ChevronDown className="h-5 w-5 text-white" />
-          }
+        <h3 className="text-lg font-semibold bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-blue-600">
+          AI Analysis
+        </h3>
+      </div>
+      <div className="bg-white p-6 rounded-lg shadow-inner">
+        <div className="relative">
+          <div className="absolute left-0 top-0 w-1 h-full bg-indigo-400 rounded-full" />
+          <p className="pl-6 text-gray-700 leading-relaxed whitespace-pre-line">{analysis}</p>
         </div>
-      </button>
-      
-      {/* Collapsible content */}
-      {isVisible && (
-        <div className="bg-gradient-to-r from-indigo-50 to-blue-50 p-6 rounded-b-xl border-x border-b border-blue-200 shadow-lg transition-all duration-300">
-          <div className="bg-white p-6 rounded-lg shadow-inner">
-            <div className="relative">
-              <div className="absolute left-0 top-0 w-1 h-full bg-indigo-400 rounded-full" />
-              <p className="pl-6 text-gray-700 leading-relaxed whitespace-pre-line">{analysis}</p>
-            </div>
-          </div>
-        </div>
-      )}
+      </div>
     </div>
   );
 };
@@ -336,14 +317,7 @@ const StatisticsCard = ({ statistics }: { statistics?: TableStatistics }) => {
             <span className="text-gray-600">Average Granularity</span>
             <span className="font-bold text-blue-700">{statistics.average_granularity}</span>
           </div>
-          {statistics.data_quality_score !== undefined && (
-            <div className="flex justify-between">
-              <span className="text-gray-600">Data Quality Score</span>
-              <span className={`font-bold ${statistics.data_quality_score >= 75 ? 'text-green-600' : statistics.data_quality_score >= 50 ? 'text-amber-600' : 'text-red-600'}`}>
-                {statistics.data_quality_score}/100
-              </span>
-            </div>
-          )}
+
         </div>
       </div>
       
@@ -408,7 +382,6 @@ const GranularityDashboard: React.FC = () => {
   const [data, setData] = useState<Column[]>([]);
   const [overallReason, setOverallReason] = useState<string>("");
   const [llmAnalysis, setLlmAnalysis] = useState<string>("");
-  const [showLlmAnalysis, setShowLlmAnalysis] = useState(true);
   const [tableStatistics, setTableStatistics] = useState<TableStatistics | undefined>();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -441,8 +414,6 @@ const GranularityDashboard: React.FC = () => {
         setTableName(newTableName);
         // Reset LLM analysis content to trigger a new fetch
         setLlmAnalysis("");
-        // Auto-show LLM analysis for new table
-        setShowLlmAnalysis(true);
         console.log("Table selected event received:", newTableName);
       }
     };
@@ -469,7 +440,6 @@ const GranularityDashboard: React.FC = () => {
     if (data.length > 0 && tableName && !llmAnalysis) {
       // Instead of calling an endpoint, use the overall_reason from the data
       setLlmAnalysis(overallReason || "The sales table includes a diverse range of columns with varying degrees of granularity. While identifiers like sales_id and timestamp are highly granular, columns such as store_id have lower granularity due to repetition. This mix results in an overall medium granularity classification, indicating that while detailed sales data is available, there are areas, particularly related to stores, where granularity is less detailed, which can impact analysis of store performance.");
-      setShowLlmAnalysis(true);
     }
   }, [data, tableName, overallReason, llmAnalysis]);
 
@@ -482,7 +452,29 @@ const GranularityDashboard: React.FC = () => {
       const response = await fetch(`http://127.0.0.1:8000/granularity/${tableName}`);
       const result: GranularityData = await response.json();
       
-      setData(result.columns);
+      // Sort data in ascending order by granularity level and then by column_name
+      const sortedData = [...result.columns].sort((a, b) => {
+        // First sort by granularity level in ascending order
+        const granularityOrder: Record<string, number> = {
+          "Very Low": 1,
+          "Low": 2,
+          "Medium": 3,
+          "High": 4,
+          "Very High": 5
+        };
+        
+        const granularityDiff = 
+          (granularityOrder[a.granularity] || 0) - (granularityOrder[b.granularity] || 0);
+        
+        // If same granularity, sort alphabetically by column name
+        if (granularityDiff === 0) {
+          return a.column_name.localeCompare(b.column_name);
+        }
+        
+        return granularityDiff;
+      });
+      
+      setData(sortedData);
       
       // Store the overall reason
       setOverallReason(result.overall_reason);
@@ -528,7 +520,6 @@ const GranularityDashboard: React.FC = () => {
       
       // Use the overall_reason directly for the LLM analysis
       setLlmAnalysis(result.overall_reason || "The sales table includes a diverse range of columns with varying degrees of granularity. While identifiers like sales_id and timestamp are highly granular, columns such as store_id have lower granularity due to repetition. This mix results in an overall medium granularity classification, indicating that while detailed sales data is available, there are areas, particularly related to stores, where granularity is less detailed, which can impact analysis of store performance.");
-      setShowLlmAnalysis(true);
       
     } catch (err) {
       setError('Failed to fetch granularity data. Please try again later.');
@@ -536,11 +527,6 @@ const GranularityDashboard: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
-
-  // Toggle LLM analysis visibility
-  const toggleLLMAnalysis = () => {
-    setShowLlmAnalysis(!showLlmAnalysis);
   };
 
   return (
@@ -563,70 +549,71 @@ const GranularityDashboard: React.FC = () => {
           <LoadingAnimation />
         ) : (
           <div>
-            {/* Chart container with legend integrated directly below */}
-            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl shadow-inner">
-              {/* Chart section */}
-              <div className="h-[400px] p-4">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart 
-                    data={data} 
-                    margin={{ top: 20, right: 30, left: 20, bottom: 70 }}
-                  >
-                    <XAxis 
-                      dataKey="column_name" 
-                      angle={-45} 
-                      textAnchor="end" 
-                      height={70} 
-                      tick={{ fill: '#4B5563', fontSize: 14 }}
-                    />
-                    <YAxis 
-                      ticks={[0, 1, 2, 3, 4]} 
-                      tickFormatter={value => ["Very Low", "Low", "Medium", "High", "Very High"][value]} 
-                      tick={{ fill: '#4B5563', fontSize: 14 }}
-                    />
-                    <Tooltip 
-                      content={<CustomTooltip />} 
-                      cursor={{ fill: "rgba(59, 130, 246, 0.1)" }}
-                    />
-                    <Bar
-                      dataKey={(entry: Column) => {
-                        const granularityMapping: Record<string, number> = {
-                          "Very High": 4,
-                          "High": 3,
-                          "Medium": 2,
-                          "Low": 1,
-                          "Very Low": 0
-                        };
-                        return granularityMapping[entry.granularity] ?? 0;
-                      }}
-                      radius={[8, 8, 0, 0]}
-                    >
-                      {data && data.length > 0 ? data.map((entry, index) => (
-                        <Cell 
-                          key={`cell-${index}`} 
-                          fill={`rgba(59, 130, 246, ${getColorIntensity(entry.granularity)})`}
+            {/* New 3-column layout for main content area */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+              {/* Chart container takes 9 columns on large screens */}
+              <div className="lg:col-span-9">
+                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl shadow-inner">
+                  {/* Chart section */}
+                  <div className="h-[400px] p-4">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart 
+                        data={data} 
+                        margin={{ top: 20, right: 30, left: 20, bottom: 70 }}
+                      >
+                        <XAxis 
+                          dataKey="column_name" 
+                          angle={-45} 
+                          textAnchor="end" 
+                          height={70} 
+                          tick={{ fill: '#4B5563', fontSize: 14 }}
                         />
-                      )) : null}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
+                        <YAxis 
+                          ticks={[0, 1, 2, 3, 4]} 
+                          tickFormatter={value => ["Very Low", "Low", "Medium", "High", "Very High"][value]} 
+                          tick={{ fill: '#4B5563', fontSize: 14 }}
+                        />
+                        <Tooltip 
+                          content={<CustomTooltip />} 
+                          cursor={{ fill: "rgba(59, 130, 246, 0.1)" }}
+                        />
+                        <Bar
+                          dataKey={(entry: Column) => {
+                            const granularityMapping: Record<string, number> = {
+                              "Very High": 4,
+                              "High": 3,
+                              "Medium": 2,
+                              "Low": 1,
+                              "Very Low": 0
+                            };
+                            return granularityMapping[entry.granularity] ?? 0;
+                          }}
+                          radius={[8, 8, 0, 0]}
+                        >
+                          {data && data.length > 0 ? data.map((entry, index) => (
+                            <Cell 
+                              key={`cell-${index}`} 
+                              fill={`rgba(59, 130, 246, ${getColorIntensity(entry.granularity)})`}
+                            />
+                          )) : null}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                  
+                  {/* Legend section - directly below the chart in the same container */}
+                  <GranularityLegend />
+                </div>
               </div>
               
-              {/* Legend section - directly below the chart in the same container */}
-              <GranularityLegend />
+              {/* AI Analysis box takes 3 columns on large screens */}
+              <div className="lg:col-span-3">
+                <LLMAnalysisBox analysis={llmAnalysis || "Loading analysis..."} />
+              </div>
             </div>
             
             {/* Statistics Cards */}
             <StatisticsCard statistics={tableStatistics} />
-            
-            {/* Footer section with LLM Analysis Box */}
-            <div className="mt-8">
-              <LLMAnalysisBox 
-                analysis={llmAnalysis || "Loading analysis..."}
-                isVisible={showLlmAnalysis}
-                onToggle={toggleLLMAnalysis}
-              />
-            </div>
           </div>
         )}
       </div>

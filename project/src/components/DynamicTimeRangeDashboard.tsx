@@ -51,7 +51,6 @@ const DynamicTimeRangeDashboard: React.FC = () => {
   const [roboticLoading, setRoboticLoading] = useState<boolean>(false);
   const roboticInfoCache = useRef<{[key: string]: RoboticInfo}>({});
   const [tableName, setTableName] = useState(window.selectedTableName || '');
-  const [showLlmUnderGraph, setShowLlmUnderGraph] = useState<boolean>(false);
   
   // Listen for table selection events
   useEffect(() => {
@@ -162,12 +161,13 @@ const DynamicTimeRangeDashboard: React.FC = () => {
       }
       
       switch (timeRange) {
-        case 'daily':
-          // Just show time without seconds for daily (HH:MM format)
-          return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+        
         case 'weekly':
           // Just day and month without week number or year
           return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        case 'daily':
+            // Just show time without seconds for daily (HH:MM format)
+          return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
         case 'monthly':
           // Show day, month, and year for monthly
           return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
@@ -197,8 +197,6 @@ const DynamicTimeRangeDashboard: React.FC = () => {
     ) {
       // Use cached data
       setRoboticInfo(roboticInfoCache.current[cacheKey]);
-      // Display data under the graph
-      setShowLlmUnderGraph(true);
       return;
     }
     
@@ -221,19 +219,12 @@ const DynamicTimeRangeDashboard: React.FC = () => {
         // Update cache
         roboticInfoCache.current[cacheKey] = roboticData;
         setRoboticInfo(roboticData);
-        // Display data under the graph
-        setShowLlmUnderGraph(true);
       }
     } catch (err) {
       console.error('Error fetching robotic analysis:', err);
     } finally {
       setRoboticLoading(false);
     }
-  };
-
-  // Toggle LLM box under graph when clicking on the AI analysis section
-  const handleToggleLlmUnderGraph = () => {
-    setShowLlmUnderGraph(!showLlmUnderGraph);
   };
 
   if (loading) {
@@ -272,287 +263,169 @@ const DynamicTimeRangeDashboard: React.FC = () => {
   // Get the columns (fields) from the data for the chart
   const tableColumns = data.length > 0 ? Object.keys(data[0]).filter(key => key !== 'date') : [];
 
-  // Animation variants for the LLM box under graph
-  const llmBoxVariants = {
-    hidden: { opacity: 0, y: 20 },
-    visible: { 
-      opacity: 1, 
-      y: 0,
-      transition: { 
-        type: "spring", 
-        damping: 15, 
-        stiffness: 300,
-        duration: 0.6
-      }
-    },
-    exit: { 
-      opacity: 0, 
-      y: 20,
-      transition: { 
-        duration: 0.3 
-      }
-    }
-  };
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-blue-100 to-blue-200 p-0 relative w-full h-full">
-      {/* Decorative floating elements */}
-      <motion.div 
-        className="absolute top-20 left-20 w-32 h-32 bg-blue-500 rounded-full opacity-5"
-        animate={{ 
-          y: [0, -20, 0],
-          scale: [1, 1.1, 1],
-        }}
-        transition={{ duration: 8, repeat: Infinity, repeatType: "reverse" }}
-      />
-      <motion.div 
-        className="absolute bottom-20 right-40 w-24 h-24 bg-blue-600 rounded-full opacity-5"
-        animate={{ 
-          y: [0, 15, 0],
-          scale: [1, 1.2, 1],
-        }}
-        transition={{ duration: 7, repeat: Infinity, repeatType: "reverse", delay: 2 }}
-      />
-
-      <div className="w-full h-full bg-blue-100/70 rounded-none shadow-2xl border border-blue-200 relative z-10 backdrop-blur-sm">
-        {/* Header with glowing accent */}
-        <motion.div 
-          initial={{ y: -10, opacity: 0 }} 
-          animate={{ y: 0, opacity: 1 }}
-          transition={{ duration: 0.5 }}
-          className="flex flex-wrap items-center mb-6 relative p-8"
-        >
+      {/* Main grid layout - 12 columns with 9:3 split */}
+      <div className="grid grid-cols-12 gap-4 p-4 w-full h-full">
+        {/* Main content area - 9 columns */}
+        <div className="col-span-9 bg-blue-100/70 rounded-lg shadow-2xl border border-blue-200 relative z-10 backdrop-blur-sm">
+          {/* Header with glowing accent */}
           <motion.div 
-            className="absolute -left-4 -top-4 w-16 h-16 bg-blue-600 rounded-full opacity-30 blur-xl"
-            animate={{ 
-              scale: [1, 1.2, 1],
-              opacity: [0.2, 0.3, 0.2]
-            }}
-            transition={{ duration: 3, repeat: Infinity }}
-          />
-          
-          <h2 className="text-2xl font-bold text-blue-800 flex items-center mr-4">
-            <BarChart2 className="mr-2 text-blue-600" /> 
-            {tableName ? `${tableName} Frequency Analysis` : 'Frequency Analysis'}
-          </h2>
-          
-          {/* Time Range Selector with enhanced styling */}
-          <div className="relative mr-4 mt-2">
-            <Calendar className="absolute left-3 top-2.5 text-blue-600 h-4 w-4" />
-            <motion.select
-              whileHover={{ scale: 1.03 }}
-              className="pl-10 pr-4 py-2 rounded-lg bg-transparent text-blue-900 border border-blue-300 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500"
-              value={timeRange}
-              onChange={(e) => setTimeRange(e.target.value as TimeRange)}
-            >
-              <option value="daily" className="bg-blue-200 hover:bg-blue-300">
-                Daily
-              </option>
-              <option value="weekly" className="bg-blue-200 hover:bg-blue-300">
-                Weekly
-              </option>
-              <option value="monthly" className="bg-blue-200 hover:bg-blue-300">
-                Monthly
-              </option>
-            </motion.select>
-          </div>
-          
-          {/* Display current table name */}
-          <div className="relative mt-2">
-            <Database className="absolute left-3 top-2.5 text-blue-600 h-4 w-4" />
-            <motion.div
-              className="pl-10 pr-4 py-2 rounded-lg bg-blue-200 text-blue-900 border border-blue-300"
-            >
-              Table: {tableName || 'None Selected'}
-            </motion.div>
-          </div>
-          
-          {/* AI Analysis indicator */}
-          {roboticLoading && (
-            <div className="ml-4 flex items-center text-blue-700 mt-2">
-              <Loader className="mr-2 animate-spin" /> Analyzing...
-            </div>
-          )}
-        </motion.div>
-
-        {/* Frequency Chart with glass-like styling - REDUCED HEIGHT */}
-        <motion.div 
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.8, delay: 0.3 }}
-          className="mx-4 p-4 rounded-xl bg-white/70 border border-blue-200 backdrop-blur-sm"
-        >
-          {data.length > 0 ? (
-            <ResponsiveContainer width="100%" height={400}>
-              <AreaChart
-                data={data}
-                margin={{ top: 10, right: 30, left: 0, bottom: 30 }}
-              >
-                <defs>
-                  {tableColumns.map((column, index) => (
-                    <linearGradient key={index} id={`colorGrad${index}`} x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor={colorPalette[index % colorPalette.length].stroke} stopOpacity={0.8}/>
-                      <stop offset="95%" stopColor={colorPalette[index % colorPalette.length].fill} stopOpacity={0.2}/>
-                    </linearGradient>
-                  ))}
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(59, 130, 246, 0.2)" />
-                <XAxis 
-                  dataKey="date" 
-                  stroke="#1e40af" 
-                  tick={{ fill: '#1e40af' }}
-                  tickFormatter={formatXAxisTick}
-                  height={50} 
-                  minTickGap={15} 
-                  tickMargin={10} 
-                  angle={-30} 
-                  textAnchor="end" 
-                />
-                <YAxis stroke="#1e40af" tick={{ fill: '#1e40af' }} />
-                <Tooltip 
-                  contentStyle={{ 
-                    backgroundColor: 'rgba(219, 234, 254, 0.95)', 
-                    color: '#1e40af',
-                    borderRadius: '8px',
-                    border: '1px solid rgba(37, 99, 235, 0.5)',
-                    boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)'
-                  }} 
-                  labelStyle={{ fontWeight: 'bold', color: '#1e40af' }}
-                  itemStyle={{ color: '#1e40af' }}
-                  labelFormatter={(label) => formatXAxisTick(label)}
-                />
-                {tableColumns.map((column, index) => (
-                  <Area
-                    key={column}
-                    type="monotone"
-                    dataKey={column}
-                    stroke={colorPalette[index % colorPalette.length].stroke}
-                    fill={`url(#colorGrad${index})`}
-                    fillOpacity={0.6}
-                    name={column}
-                  />
-                ))}
-              </AreaChart>
-            </ResponsiveContainer>
-          ) : (
-            <div className="h-78flex items-center justify-center">
-              <p className="text-blue-800 text-lg">
-                {tableName ? `No data available for ${tableName}` : 'Select a table to view frequency data'}
-              </p>
-            </div>
-          )}
-        </motion.div>
-        
-        {/* Clickable AI Analysis Header */}
-        {roboticInfo && (
-          <motion.div 
-            className="mx-4 mt-4 cursor-pointer"
-            onClick={handleToggleLlmUnderGraph}
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
+            initial={{ y: -10, opacity: 0 }} 
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ duration: 0.5 }}
+            className="flex flex-wrap items-center mb-6 relative p-8"
           >
-            <div className="flex items-center justify-between px-6 py-3 bg-blue-500/20 border border-blue-200 rounded-t-xl backdrop-blur-sm">
-              <div className="flex items-center">
-                <motion.div
-                  animate={{ 
-                    rotate: [0, 5, -5, 0],
-                    color: ["#3b82f6", "#60a5fa", "#3b82f6"]
-                  }}
-                  transition={{ repeat: Infinity, duration: 3, repeatType: "reverse" }}
-                  className="mr-3"
-                >
-                  <Bot className="h-6 w-6 text-blue-600" />
-                </motion.div>
-                <h3 className="text-xl font-bold text-blue-800">AI Analysis</h3>
-              </div>
-              <motion.div>
-                {showLlmUnderGraph ? (
-                  <X className="text-blue-700" />
-                ) : (
-                  <motion.div 
-                    animate={{ y: [0, 3, 0] }}
-                    transition={{ repeat: Infinity, duration: 1.5 }}
-                    className="text-blue-700 font-bold"
-                  >
-                    ▼
-                  </motion.div>
-                )}
+            <h2 className="text-2xl font-bold text-blue-800 flex items-center mr-4">
+              <BarChart2 className="mr-2 text-blue-600" /> 
+              {tableName ? `${tableName} Frequency Analysis` : 'Frequency Analysis'}
+            </h2>
+            
+            {/* Time Range Selector with enhanced styling */}
+            <div className="relative mr-4 mt-2">
+              <Calendar className="absolute left-3 top-2.5 text-blue-600 h-4 w-4" />
+              <motion.select
+                whileHover={{ scale: 1.03 }}
+                className="pl-10 pr-4 py-2 rounded-lg bg-transparent text-blue-900 border border-blue-300 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500"
+                value={timeRange}
+                onChange={(e) => setTimeRange(e.target.value as TimeRange)}
+              >
+                <option value="daily" className="bg-blue-200 hover:bg-blue-300">
+                  Daily
+                </option>
+                <option value="weekly" className="bg-blue-200 hover:bg-blue-300">
+                  Weekly
+                </option>
+                <option value="monthly" className="bg-blue-200 hover:bg-blue-300">
+                  Monthly
+                </option>
+              </motion.select>
+            </div>
+            
+            {/* Display current table name */}
+            <div className="relative mt-2">
+              <Database className="absolute left-3 top-2.5 text-blue-600 h-4 w-4" />
+              <motion.div
+                className="pl-10 pr-4 py-2 rounded-lg bg-blue-200 text-blue-900 border border-blue-300"
+              >
+                Table: {tableName || 'None Selected'}
               </motion.div>
             </div>
           </motion.div>
-        )}
-        
-        {/* LLM Analysis Box under the graph */}
-        <AnimatePresence>
-          {showLlmUnderGraph && roboticInfo && (
-            <motion.div
-              className="mx-4 rounded-b-xl shadow-lg overflow-hidden relative"
-              variants={llmBoxVariants}
-              initial="hidden"
-              animate="visible"
-              exit="exit"
-            >
-              {/* Animated light color background */}
-              <motion.div 
-                className="absolute inset-0 bg-gradient-to-r from-blue-400/10 via-blue-300/20 to-blue-400/10 rounded-b-xl"
-                animate={{ 
-                  backgroundPosition: ["0% 0%", "100% 0%", "0% 0%"],
-                  opacity: [0.5, 0.8, 0.5]
-                }}
-                transition={{ duration: 8, repeat: Infinity, ease: "easeInOut" }}
-              />
-              
-              <div className="relative p-6 backdrop-blur-sm bg-white/40 border border-blue-200 border-t-0 rounded-b-xl">
-                {/* Content */}
-                <div className="relative">
-                  {/* Animated light particles */}
-                  <motion.div 
-                    className="absolute top-3 right-10 w-2 h-2 rounded-full bg-blue-400"
-                    animate={{ 
-                      scale: [1, 1.5, 1], 
-                      opacity: [0.5, 0.9, 0.5],
-                      x: [0, 10, 0],
-                      y: [0, -5, 0]
-                    }}
-                    transition={{ duration: 3, repeat: Infinity }}
+
+          {/* Frequency Chart with glass-like styling */}
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.8, delay: 0.3 }}
+            className="mx-4 p-4 mb-4 rounded-xl bg-white/70 border border-blue-200 backdrop-blur-sm"
+          >
+            {data.length > 0 ? (
+              <ResponsiveContainer width="100%" height={500}>
+                <AreaChart
+                  data={data}
+                  margin={{ top: 10, right: 30, left: 0, bottom: 30 }}
+                >
+                  <defs>
+                    {tableColumns.map((column, index) => (
+                      <linearGradient key={index} id={`colorGrad${index}`} x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor={colorPalette[index % colorPalette.length].stroke} stopOpacity={0.8}/>
+                        <stop offset="95%" stopColor={colorPalette[index % colorPalette.length].fill} stopOpacity={0.2}/>
+                      </linearGradient>
+                    ))}
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(59, 130, 246, 0.2)" />
+                  <XAxis 
+                    dataKey="date" 
+                    stroke="#1e40af" 
+                    tick={{ fill: '#1e40af' }}
+                    tickFormatter={formatXAxisTick}
+                    height={50} 
+                    minTickGap={15} 
+                    tickMargin={10} 
+                    angle={-30} 
+                    textAnchor="end" 
                   />
-                  <motion.div 
-                    className="absolute bottom-5 left-20 w-2 h-2 rounded-full bg-blue-500"
-                    animate={{ 
-                      scale: [1, 1.8, 1], 
-                      opacity: [0.5, 0.8, 0.5],
-                      x: [0, -10, 0],
-                      y: [0, 5, 0]
-                    }}
-                    transition={{ duration: 2.5, repeat: Infinity, delay: 0.5 }}
+                  <YAxis stroke="#1e40af" tick={{ fill: '#1e40af' }} />
+                  <Tooltip 
+                    contentStyle={{ 
+                      backgroundColor: 'rgba(219, 234, 254, 0.95)', 
+                      color: '#1e40af',
+                      borderRadius: '8px',
+                      border: '1px solid rgba(37, 99, 235, 0.5)',
+                      boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)'
+                    }} 
+                    labelStyle={{ fontWeight: 'bold', color: '#1e40af' }}
+                    itemStyle={{ color: '#1e40af' }}
+                    labelFormatter={(label) => formatXAxisTick(label)}
                   />
-                  <motion.div 
-                    className="absolute top-10 left-40 w-1.5 h-1.5 rounded-full bg-blue-300"
-                    animate={{ 
-                      scale: [1, 1.3, 1], 
-                      opacity: [0.6, 1, 0.6],
-                      x: [0, 15, 0],
-                      y: [0, 10, 0]
-                    }}
-                    transition={{ duration: 4, repeat: Infinity, delay: 1 }}
-                  />
-                  
-                  <p className="text-blue-900 leading-relaxed relative z-10 max-h-32 overflow-y-auto custom-scrollbar">{roboticInfo.summary}</p>
-                </div>
-                
-                {/* Bottom animated light bar */}
-                <motion.div 
-                  className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-100 via-blue-500 to-blue-100"
-                  animate={{ 
-                    opacity: [0.3, 0.7, 0.3],
-                    backgroundPosition: ["0% 0%", "100% 0%", "0% 0%"]
-                  }}
-                  transition={{ duration: 5, repeat: Infinity, ease: "easeInOut" }}
-                />
+                  {tableColumns.map((column, index) => (
+                    <Area
+                      key={column}
+                      type="monotone"
+                      dataKey={column}
+                      stroke={colorPalette[index % colorPalette.length].stroke}
+                      fill={`url(#colorGrad${index})`}
+                      fillOpacity={0.6}
+                      name={column}
+                    />
+                  ))}
+                </AreaChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-80 flex items-center justify-center">
+                <p className="text-blue-800 text-lg">
+                  {tableName ? `No data available for ${tableName}` : 'Select a table to view frequency data'}
+                </p>
               </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+            )}
+          </motion.div>
+        </div>
+
+        {/* AI Analysis Sidebar - 3 columns */}
+        <div className="col-span-3 sticky top-4 self-start">
+          {/* AI Analysis Panel */}
+          <div className="bg-blue-200 rounded-lg shadow-xl border border-blue-300 overflow-hidden h-full">
+            {/* AI Header */}
+            <div className="bg-blue-500/60 backdrop-blur-sm p-4 border-b border-blue-300 flex items-center justify-between">
+              <div className="flex items-center">
+                <Bot className="mr-3 h-6 w-6 text-white" />
+                <h3 className="text-xl font-bold text-white">AI Analysis</h3>
+              </div>
+              
+              {roboticLoading && (
+                <div className="flex items-center text-white">
+                  <Loader className="animate-spin" size={18} />
+                </div>
+              )}
+            </div>
+
+            {/* AI Content - White Background */}
+            <div className="bg-white p-6 rounded-md m-4 shadow-inner min-h-96">
+              {roboticInfo ? (
+                <div className="text-blue-900 leading-relaxed relative max-h-full overflow-y-auto custom-scrollbar">
+                  <p>{roboticInfo.summary}</p>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center h-full text-center text-blue-700">
+                  {roboticLoading ? (
+                    <>
+                      <Loader className="mb-3 animate-spin" size={24} />
+                      <p>Analyzing your data...</p>
+                    </>
+                  ) : (
+                    <>
+                      <p>Select a table and time range to see AI analysis</p>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+            
+            {/* Bottom light bar */}
+            <div className="h-1 bg-blue-500" />
+          </div>
+        </div>
       </div>
 
       {/* Add custom CSS for scrollbars */}

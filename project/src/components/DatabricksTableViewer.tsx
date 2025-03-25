@@ -10,6 +10,7 @@ const DataWarehouseUI = () => {
   const [currentMetadata, setCurrentMetadata] = useState('');
   const [activeSection, setActiveSection] = useState('tables');
   const [getMetadataTable, setGetMetadataTable] = useState('');
+  const [metadataLoading, setMetadataLoading] = useState(false);
 
   useEffect(() => {
     fetchTables();
@@ -81,12 +82,23 @@ const DataWarehouseUI = () => {
       return;
     }
     try {
-      const response = await fetch(`http://127.0.0.1:8000/get-metadata/${getMetadataTable}`);
+      setMetadataLoading(true);
+      const response = await fetch(`http://127.0.0.1:8000/list-metadata`);
       const data = await response.json();
-      setCurrentMetadata(data.metadata);
+      console.log("hii",data);
+      // Extract the metadata for the selected table from the response object
+      // Based on the example response: { "updated_customers": "this table about customer details", "updated_orders": "this regarding about orders" }
+      if (data && typeof data === 'object') {
+        const tableMetadata = data[getMetadataTable] || '';
+        setCurrentMetadata(tableMetadata);
+      } else {
+        setCurrentMetadata('No metadata available');
+      }
     } catch (error) {
       console.error('Error fetching metadata:', error);
-      setCurrentMetadata('No metadata available');
+      setCurrentMetadata('Error fetching metadata');
+    } finally {
+      setMetadataLoading(false);
     }
   };
 
@@ -192,6 +204,7 @@ const DataWarehouseUI = () => {
                         <button
                           onClick={() => {
                             setSelectedTable(table);
+                            setGetMetadataTable(table);
                             setActiveSection('metadata');
                           }}
                           className="text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity duration-200 hover:text-blue-600"
@@ -278,9 +291,14 @@ const DataWarehouseUI = () => {
                 <button
                   onClick={fetchMetadata}
                   className="flex items-center justify-center gap-2 px-4 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors duration-200 w-full"
+                  disabled={metadataLoading}
                 >
-                  <Eye />
-                  Get Metadata
+                  {metadataLoading ? (
+                    <Loader2 className="animate-spin" />
+                  ) : (
+                    <Eye />
+                  )}
+                  {metadataLoading ? 'Loading Metadata...' : 'Get Metadata'}
                 </button>
 
                 {currentMetadata && (

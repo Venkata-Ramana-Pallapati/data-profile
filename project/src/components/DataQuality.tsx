@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
-import { Database, FileCheck, AlertCircle, Menu, Info, X, Calculator, Bot, ChevronDown, ChevronUp } from "lucide-react";
+import { Database, FileCheck, AlertCircle, Info, X, Bot,Book,  ChevronUp, Eye } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { getSelectedTable } from "../utils/localStorageUtils";
 
 interface ColumnMetrics {
   missing_values: number;
@@ -23,20 +22,15 @@ interface TableMetrics {
   llm_analysis: string;
 }
 
-interface TableSummary {
-  summary: string;
-  isExpanded: boolean;
-}
-interface DataQualityProps {
-  tableName: string;
-}
-
 const COLORS = {
   completeness: "#0088FE",
   uniqueness: "#00C49F",
   missing: "#FFBB28",
   duplicate: "#FF8042"
 };
+interface TableMetadata {
+  [tableName: string]: string;
+}
 
 const DQCalculationDetails = {
   title: "Data Quality Score Calculation",
@@ -56,6 +50,86 @@ Duplicates: 12% → Impact: 88%
 Final Score = (95 + 88 + 95 + 88) / 4 = 91.5%`
 };
 
+const CompletenessDetails = {
+  title: "Completeness Calculation",
+  formula: `Completeness% = (Filled Fields / Total Fields) × 100`,
+  explanation: "Completeness measures the percentage of fields that are filled with valid data versus the total number of fields that could potentially contain data.",
+  impact: [
+    "Higher completeness means more reliable data for analysis",
+    "Critical data fields should have higher completeness targets",
+    "Low completeness may indicate data collection or entry issues"
+  ],
+  example: `Example:
+Table with 1000 rows and 10 columns (10,000 total fields)
+850 fields contain data (9,150 fields are filled)
+Completeness = (9,150 / 10,000) × 100 = 91.5%`,
+  recommendations: [
+    "Improve data collection processes for low-completeness fields",
+    "Implement validation rules to ensure critical fields are filled",
+    "Consider making important fields mandatory in your forms/UI"
+  ]
+};
+
+const UniquenessDetails = {
+  title: "Uniqueness Calculation",
+  formula: `Uniqueness% = (Number of Unique Records / Total Records) × 100`,
+  explanation: "Uniqueness measures the percentage of records that are unique (not duplicated) in your dataset.",
+  impact: [
+    "Low uniqueness can skew analysis results and lead to incorrect conclusions",
+    "Duplicate records waste storage and processing resources",
+    "Uniqueness is especially critical for primary key fields"
+  ],
+  example: `Example:
+Table with 1000 total records
+50 records are duplicates (950 unique records)
+Uniqueness = (950 / 1000) × 100 = 95%`,
+  recommendations: [
+    "Implement proper primary key constraints in your database",
+    "Add deduplication processes to your data pipeline",
+    "Review data entry processes that may lead to duplicates"
+  ]
+};
+
+const MissingValuesDetails = {
+  title: "Missing Values Calculation",
+  formula: `Missing Values% = (Number of Missing Values / (Total Rows × Total Columns)) × 100`,
+  explanation: "Missing values percentage represents the proportion of values that are NULL, empty, or otherwise missing in your dataset.",
+  impact: [
+    "Missing values can lead to biased analyses",
+    "May require imputation before certain operations",
+    "Critical fields with missing data should be prioritized"
+  ],
+  example: `Example:
+Table with 1000 rows and 10 columns (10,000 possible values)
+300 values are missing
+Missing Values = (300 / 10,000) × 100 = 3%`,
+  recommendations: [
+    "Investigate data collection processes for fields with high missing rates",
+    "Consider imputation strategies for analysis-critical fields",
+    "Flag records with missing values in key fields"
+  ]
+};
+
+const DuplicatesDetails = {
+  title: "Duplicates Calculation",
+  formula: `Duplicates% = (Number of Duplicate Rows / Total Rows) × 100`,
+  explanation: "Duplicates percentage represents the proportion of rows that are exact copies of other rows in your dataset.",
+  impact: [
+    "Duplicate records can skew analysis results",
+    "May lead to incorrect counts and aggregations",
+    "Can cause issues with data processing and reporting"
+  ],
+  example: `Example:
+Table with 1000 total rows
+120 rows are duplicates
+Duplicates = (120 / 1000) × 100 = 12%`,
+  recommendations: [
+    "Implement unique constraints in your database",
+    "Add deduplication steps to your ETL processes",
+    "Investigate source systems that generate duplicate data"
+  ]
+};
+
 const DataQuality = () => {
   const [tables, setTables] = useState<string[]>([]);
   const [selectedTable, setSelectedTable] = useState<string | null>(null);
@@ -64,12 +138,11 @@ const DataQuality = () => {
   const [selectedDetails, setSelectedDetails] = useState<Record<string, string | null>>({});
   const [error, setError] = useState<string | null>(null);
   const [showFormulaPopup, setShowFormulaPopup] = useState(false);
-  const [showDescription, setShowDescription] = useState(false);
-  const [tableSummaries, setTableSummaries] = useState<Record<string, TableSummary>>({});
-  const [showMissingInfo, setShowMissingInfo] = useState<string | null>(null);
-  const [showDuplicateInfo, setShowDuplicateInfo] = useState<string | null>(null);
+  const [showMetricInfo, setShowMetricInfo] = useState<{metric: string | null, table: string | null}>({metric: null, table: null});
   const [tableName, setTableName] = useState(window.selectedTableName || '');
-
+  const [llmAnalysis, setLlmAnalysis] = useState<string>('');
+  const [tableMetadata, setTableMetadata] = useState<TableMetadata>({});
+  const [showTableSummary, setShowTableSummary] = useState(false);
   useEffect(() => {
     const handleTableSelected = (event: Event) => {
       const customEvent = event as CustomEvent<{ tableName: string }>;
@@ -122,74 +195,35 @@ const DataQuality = () => {
     }
   }, [tables]);
 
-  const fetchTables = async () => {
-    setError(null);
+
+
+
+  const fetchTableMetadata = async () => {
     try {
-      const response = await fetch("http://127.0.0.1:8000/list-tables");
-      if (!response.ok) throw new Error(`Failed to fetch tables! Status: ${response.status}`);
-      const data = await response.json();
-      setTables(Array.isArray(data.tables) ? data.tables : []);
+      const response = await fetch("http://127.0.0.1:8000/list-metadata/");
+      if (!response.ok) throw new Error(`Failed to fetch table metadata! Status: ${response.status}`);
+      const metadata = await response.json();
+      setTableMetadata(metadata);
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "Failed to fetch available tables.";
-      setError(errorMessage);
-      setTables([]);
+      console.error("Error fetching table metadata:", error);
     }
   };
 
-  const handleTableSelection = async (tableName: string) => {
-    setSelectedTable(tableName);
-    await handleFetchData(tableName);
-  };
+  // Add metadata fetch when component mounts or table changes
+  useEffect(() => {
+    fetchTableMetadata();
+  }, []);
 
-  const handleFetchData = async (tableName: string) => {
-    if (!tableName) {
-      setError("Please select a table.");
-      return;
-    }
 
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await fetch(`http://127.0.0.1:8000/data-quality?table_names=${tableName}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      });
-
-      if (!response.ok) throw new Error(`Data fetch error! Status: ${response.status}`);
-
-      const result: TableMetrics[] = await response.json();
-      setData(result);
-      
-      const newSummaries = result.reduce((acc, table) => ({
-        ...acc,
-        [table.table_name]: {
-          summary: table.llm_analysis,
-          isExpanded: false
-        }
-      }), {});
-      
-      setTableSummaries(newSummaries);
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "Failed to fetch data quality metrics";
-      setError(errorMessage);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const calculateOverallDQ = (tableMetrics: TableMetrics | undefined) => {
-    if (!tableMetrics) return "N/A";
-    
-    const scores = [
-      tableMetrics.completeness_percentage ?? 0,
-      tableMetrics.uniqueness_percentage ?? 0,
-      100 - (((tableMetrics.missing_values ?? 0) / (tableMetrics.total_rows || 1)) * 100),
-      100 - (((tableMetrics.duplicate_rows ?? 0) / (tableMetrics.total_rows || 1)) * 100)
-    ];
-    return (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1);
-  };
-
-  const InfoPopup = ({ title, content, onClose }: { title: string; content: React.ReactNode; onClose: () => void }) => (
+  const TableSummaryModal = ({ 
+    tableName, 
+    summary, 
+    onClose 
+  }: { 
+    tableName: string, 
+    summary: string, 
+    onClose: () => void 
+  }) => (
     <motion.div
       initial={{ opacity: 0, scale: 0.8 }}
       animate={{ opacity: 1, scale: 1 }}
@@ -208,7 +242,123 @@ const DataQuality = () => {
             <X className="h-6 w-6 text-gray-500 hover:text-gray-700" />
           </button>
         </div>
-        <h3 className="text-2xl font-bold mb-4 text-indigo-700">{title}</h3>
+        <h3 className="text-2xl font-bold mb-4 text-indigo-700 flex items-center">
+          <Book className="h-6 w-6 mr-2 text-indigo-500" />
+          {tableName} Table Summary
+        </h3>
+        <div className="space-y-4 text-gray-700 leading-relaxed">
+          <p>{summary}</p>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+  const renderTableSummaryButton = (tableName: string) => {
+    if (!tableMetadata[tableName]) return null;
+
+    return (
+      <motion.button
+        whileHover={{ scale: 1.1 }}
+        whileTap={{ scale: 0.9 }}
+        onClick={() => {
+          setShowTableSummary(true);
+        }}
+        className="ml-2 p-2 bg-blue-50 text-blue-600 rounded-full hover:bg-blue-100 transition-colors"
+      >
+        <Book className="h-5 w-5" />
+      </motion.button>
+    );
+  };
+
+
+  const fetchTables = async () => {
+    setError(null);
+    try {
+      const response = await fetch("http://127.0.0.1:8000/list-tables");
+      if (!response.ok) throw new Error(`Failed to fetch tables! Status: ${response.status}`);
+      const data = await response.json();
+      setTables(Array.isArray(data.tables) ? data.tables : []);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Failed to fetch available tables.";
+      setError(errorMessage);
+      setTables([]);
+    }
+  };
+
+  const handleFetchData = async (tableName: string) => {
+    if (!tableName) {
+      setError("Please select a table.");
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    try {
+      // Fetch data quality metrics
+      const metricsResponse = await fetch(`http://127.0.0.1:8000/data-quality?table_names=${tableName}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+
+      if (!metricsResponse.ok) throw new Error(`Data fetch error! Status: ${metricsResponse.status}`);
+      const metricsResult: TableMetrics[] = await metricsResponse.json();
+      
+      // Fetch LLM analysis summary
+      const llmResponse = await fetch(`http://127.0.0.1:8000/data-quality-summary/${tableName}`, {
+        method: "GET",
+        headers: { "Content-Type": "application/json" },
+      });
+      console.log("hii",llmResponse)
+      if (!llmResponse.ok) throw new Error(`LLM Analysis fetch error! Status: ${llmResponse.status}`);
+      const llmResult = await llmResponse.json();
+      console.log(llmResult['llm_analysis'])
+      console.log(llmResult[tableName].llm_analysis)
+      // Update state with both metrics and LLM analysis
+      setData(metricsResult);
+      setLlmAnalysis(llmResult[tableName].llm_analysis || 'No analysis available.');
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Failed to fetch data quality metrics";
+      setError(errorMessage);
+      setLlmAnalysis('Unable to generate AI analysis.');
+    } finally {
+      setLoading(false);
+    }
+  };
+  const calculateOverallDQ = (tableMetrics: TableMetrics | undefined) => {
+    if (!tableMetrics) return "N/A";
+  
+    const totalColumns = Object.keys(tableMetrics.columns || {}).length;
+    const totalCells = (tableMetrics.total_rows || 1) * totalColumns; // Adjusted total count
+  
+    const scores = [
+      tableMetrics.completeness_percentage ?? 0,
+      tableMetrics.uniqueness_percentage ?? 0,
+      100 - (((tableMetrics.missing_values ?? 0) / totalCells) * 100), // Adjusted for total cells
+      100 - (((tableMetrics.duplicate_rows ?? 0) / (tableMetrics.total_rows || 1)) * 100)
+    ];
+  
+    return (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1);
+  };
+
+  const InfoPopup = ({ title, content, onClose, colorClass }: { title: string; content: React.ReactNode; onClose: () => void; colorClass?: string }) => (
+    <motion.div
+      initial={{ opacity: 0, scale: 0.8 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.8 }}
+      className="fixed inset-0 flex items-center justify-center z-50"
+      onClick={onClose}
+    >
+      <div className="absolute inset-0 bg-black bg-opacity-50" />
+      <motion.div 
+        className="bg-white rounded-xl p-6 shadow-2xl max-w-lg w-full mx-4 relative z-10"
+        onClick={e => e.stopPropagation()}
+        whileHover={{ boxShadow: "0 25pxrows_with_missing_values 50px -12px rgba(0, 0, 0, 0.25)" }}
+      >
+        <div className="absolute top-3 right-3">
+          <button onClick={onClose} className="transition-transform hover:rotate-90">
+            <X className="h-6 w-6 text-gray-500 hover:text-gray-700" />
+          </button>
+        </div>
+        <h3 className={`text-2xl font-bold mb-4 ${colorClass || 'text-indigo-700'}`}>{title}</h3>
         <div className="space-y-4">
           {content}
         </div>
@@ -231,7 +381,7 @@ const DataQuality = () => {
         whileHover={{ boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)" }}
       >
         <div className="absolute top-3 right-3 flex space-x-2">
-          <Calculator className="h-6 w-6 text-indigo-600" />
+          <Eye className="h-6 w-6 text-indigo-600" />
           <button onClick={onClose} className="transition-transform hover:rotate-90">
             <X className="h-6 w-6 text-gray-500 hover:text-gray-700" />
           </button>
@@ -259,88 +409,82 @@ const DataQuality = () => {
     </motion.div>
   );
 
-  const RoboticDescription = () => {
-    const analysisData = data.map(table => ({
-      tableName: table.table_name,
-      analysis: table.llm_analysis,
-      metrics: {
-        dqScore: calculateOverallDQ(table),
-        completeness: table.completeness_percentage.toFixed(1),
-        uniqueness: table.uniqueness_percentage.toFixed(1),
-        missingValues: ((table.missing_values / table.total_rows) * 100).toFixed(1)
-      }
-    }));
+  // Metric Information Popups - Dynamic based on metric type
+  const MetricInfoPopup = ({ metric, table, onClose }: { metric: string; table: string; onClose: () => void }) => {
+    let details;
+    let colorClass;
+
+    switch (metric) {
+      case "completeness":
+        details = CompletenessDetails;
+        colorClass = "text-blue-700";
+        break;
+      case "uniqueness":
+        details = UniquenessDetails;
+        colorClass = "text-green-700";
+        break;
+      case "missing":
+        details = MissingValuesDetails;
+        colorClass = "text-yellow-700";
+        break;
+      case "duplicate":
+        details = DuplicatesDetails;
+        colorClass = "text-orange-700";
+        break;
+      default:
+        details = MissingValuesDetails;
+        colorClass = "text-gray-700";
+    }
 
     return (
-      <motion.div
-        initial={{ x: "100%", opacity: 0 }}
-        animate={{ x: 0, opacity: 1 }}
-        exit={{ x: "100%", opacity: 0 }}
-        className="fixed top-20 right-4 bg-gradient-to-br from-slate-800 via-blue-800 to-indigo-800 text-white p-6 rounded-lg shadow-xl w-96 z-50 max-h-[80vh] overflow-y-auto"
-      >
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center">
-            <Bot className="h-8 w-8 mr-3 text-blue-300" />
-            <h3 className="text-xl font-bold">AI Data Analysis</h3>
+      <InfoPopup
+        title={details.title}
+        colorClass={colorClass}
+        content={
+          <div className="space-y-4">
+            <p className="text-gray-700">
+              Information about <strong>{metric}</strong> in the <strong>{table}</strong> table.
+            </p>
+            <div className="bg-indigo-50 p-4 rounded-lg shadow-inner">
+              <h4 className="font-semibold mb-2 text-indigo-900">Formula:</h4>
+              <pre className="whitespace-pre-wrap font-mono text-sm text-indigo-900">{details.formula}</pre>
+              <p className="mt-2 text-indigo-800">{details.explanation}</p>
+            </div>
+            <div className="bg-blue-50 p-4 rounded-lg shadow-inner">
+              <h4 className="font-semibold mb-2 text-blue-900">Impact on Data Quality:</h4>
+              <ul className="list-disc pl-5 text-blue-700 space-y-1">
+                {details.impact.map((item, i) => (
+                  <li key={i}>{item}</li>
+                ))}
+              </ul>
+            </div>
+            <div className="bg-purple-50 p-4 rounded-lg shadow-inner">
+              <h4 className="font-semibold mb-2 text-purple-900">Example Calculation:</h4>
+              <pre className="whitespace-pre-wrap font-mono text-sm text-purple-900">{details.example}</pre>
+            </div>
+            <div className="bg-green-50 p-4 rounded-lg shadow-inner">
+              <h4 className="font-semibold mb-2 text-green-900">Recommended Actions:</h4>
+              <ul className="list-disc pl-5 text-green-700 space-y-1">
+                {details.recommendations.map((item, i) => (
+                  <li key={i}>{item}</li>
+                ))}
+              </ul>
+            </div>
           </div>
-          <button 
-            onClick={() => setShowDescription(false)} 
-            className="text-gray-400 hover:text-white transition-transform hover:rotate-90"
-          >
-            <X className="h-6 w-6" />
-          </button>
-        </div>
-
-        {analysisData.length > 0 ? (
-          <div className="space-y-6">
-            {analysisData.map((table, index) => (
-              <motion.div 
-                key={index} 
-                className="bg-white bg-opacity-10 p-4 rounded-lg backdrop-blur-sm"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.1 }}
-                whileHover={{ scale: 1.02 }}
-              >
-                <h4 className="font-semibold text-blue-300 mb-2">{table.tableName}</h4>
-                <div className="grid grid-cols-2 gap-2 mb-3">
-                  <div className="bg-black bg-opacity-20 p-2 rounded shadow-inner">
-                    <p className="text-xs text-blue-300">DQ Score</p>
-                    <p className="text-lg font-bold">{table.metrics.dqScore}%</p>
-                  </div>
-                  <div className="bg-black bg-opacity-20 p-2 rounded shadow-inner">
-                    <p className="text-xs text-blue-300">Completeness</p>
-                    <p className="text-lg font-bold">{table.metrics.completeness}%</p>
-                  </div>
-                  <div className="bg-black bg-opacity-20 p-2 rounded shadow-inner">
-                    <p className="text-xs text-blue-300">Uniqueness</p>
-                    <p className="text-lg font-bold">{table.metrics.uniqueness}%</p>
-                  </div>
-                  <div className="bg-black bg-opacity-20 p-2 rounded shadow-inner">
-                    <p className="text-xs text-blue-300">Missing Values</p>
-                    <p className="text-lg font-bold">{table.metrics.missingValues}%</p>
-                  </div>
-                </div>
-                <div className="text-sm mt-3">
-                  <p className="text-gray-300">{table.analysis}</p>
-                </div>
-              </motion.div>
-            ))}
-          </div>
-        ) : (
-          <div className="text-center py-8">
-            <AlertCircle className="h-12 w-12 mx-auto text-blue-400 mb-4" />
-            <p className="text-gray-300">No analysis available. Please select and analyze tables first.</p>
-          </div>
-        )}
-      </motion.div>
+        }
+        onClose={onClose}
+      />
     );
   };
 
-  const renderMetricPieChart = (value: number, label: string, color: string, onClick: () => void, tableName: string) => {
+  const renderMetricPieChart = (value: number, label: string, color: string, onClick: () => void, tableName: string, metricType: string) => {
+    // Ensure minimum value for visualization purposes (0.1% minimum to show color)
+    const displayValue = value;
+    const visualValue = value < 0.1 ? 0.1 : value;
+    
     const pieData = [
-      { name: label, value: value },
-      { name: 'Remaining', value: 100 - value }
+      { name: label, value: visualValue },
+      { name: 'Remaining', value: 100 - visualValue }
     ];
 
     return (
@@ -381,42 +525,26 @@ const DataQuality = () => {
           </div>
           <div className="text-center mt-2">
             <h4 className="font-semibold">{label}</h4>
-            <p className="text-lg font-bold" style={{ color }}>{value.toFixed(1)}%</p>
+            <p className="text-lg font-bold" style={{ color }}>{displayValue.toFixed(1)}%</p>
           </div>
         </div>
-        {(label === "Missing Values" || label === "Duplicates") && (
-          <motion.button
-            whileHover={{ scale: 1.2, rotate: 15 }}
-            whileTap={{ scale: 0.9 }}
-            onClick={(e) => {
-              e.stopPropagation();
-              if (label === "Missing Values") {
-                setShowMissingInfo(tableName);
-              } else {
-                setShowDuplicateInfo(tableName);
-              }
-            }}
-            className="absolute top-2 right-2 p-2 rounded-full bg-gray-100 hover:bg-gray-200 shadow-md"
-          >
-            <Info className="h-4 w-4 text-gray-600" />
-          </motion.button>
-        )}
+        <motion.button
+          whileHover={{ scale: 1.2, rotate: 15 }}
+          whileTap={{ scale: 0.9 }}
+          onClick={(e) => {
+            e.stopPropagation();
+            setShowMetricInfo({ metric: metricType, table: tableName });
+          }}
+          className="absolute top-2 right-2 p-2 rounded-full bg-gray-100 hover:bg-gray-200 shadow-md"
+        >
+          <Info className="h-4 w-4 text-gray-600" />
+        </motion.button>
       </motion.div>
     );
   };
 
   const renderBarChart = (label: string, dataset: Record<string, number>, color: string) => {
-    let data;
-
-    if (label.includes("Duplicate")) {
-      data = [
-        { name: "Total Rows", value: dataset["Total Rows"] },
-        { name: "Unique Rows", value: dataset["Total Rows"] - dataset["Duplicate Rows"] },
-        { name: "Duplicate Rows", value: dataset["Duplicate Rows"] }
-      ];
-    } else {
-      data = Object.entries(dataset).map(([name, value]) => ({ name, value }));
-    }
+    const data = Object.entries(dataset).map(([name, value]) => ({ name, value }));
     
     return (
       <motion.div 
@@ -485,7 +613,7 @@ const DataQuality = () => {
             onClick={() => setShowFormulaPopup(true)}
             className="absolute top-2 right-2 p-2 rounded-full bg-blue-50 opacity-0 group-hover:opacity-100 transition-opacity duration-200 hover:bg-blue-100"
           >
-            <Calculator className="h-4 w-4 text-blue-600" />
+            <Eye className="h-4 w-4 text-blue-600" />
           </motion.button>
         </motion.div>
         
@@ -520,6 +648,48 @@ const DataQuality = () => {
     }));
   };
 
+  const renderAIAnalysisBox = () => {
+    return (
+      <motion.div
+        className="bg-gradient-to-br from-blue-100 to-indigo-100 p-4 rounded-lg shadow-lg h-full border border-blue-200"
+        initial={{ opacity: 0, x: 20 }}
+        animate={{ opacity: 1, x: 0 }}
+      >
+        {/* Table Summary Section */}
+        {tableName && tableMetadata[tableName] && (
+          <>
+            <div className="flex items-center mb-4">
+              <div className="bg-green-300 p-2 rounded-full shadow-md">
+                <Book className="h-5 w-5 text-green-900" />
+              </div>
+              <h3 className="text-xl font-semibold text-green-700 ml-2">Table Summary</h3>
+            </div>
+            
+            <div className="bg-green-100 p-6 rounded-lg shadow-sm border-l-4 border-green-300 max-h-48 overflow-y-auto">
+              <p className="text-md text-green-800 leading-relaxed">
+                {tableMetadata[tableName] || 'No summary available.'}
+              </p>
+            </div>
+          </>
+        )}
+  
+        {/* AI Analysis Section */}
+        <div className="flex items-center mb-4 mt-4">
+          <div className="bg-blue-300 p-2 rounded-full shadow-md">
+            <Bot className="h-5 w-5 text-blue-900" />
+          </div>
+          <h3 className="text-xl font-semibold text-blue-700 ml-2">AI Analysis</h3>
+        </div>
+  
+        <div className="bg-blue-50 p-6 rounded-lg shadow-sm mb-4 border-l-4 border-blue-400 max-h-48 overflow-y-auto">
+          <p className="text-md text-blue-800 leading-relaxed">
+            {llmAnalysis || 'Generating AI-powered insights...'}
+          </p>
+        </div>
+      </motion.div>
+    );
+  };
+
   if (!tableName) {
     return (
       <div className="p-6 min-h-screen bg-gradient-to-br from-sky-100 via-blue-50 to-indigo-100 text-gray-800 flex items-center justify-center">
@@ -539,7 +709,7 @@ const DataQuality = () => {
   return (
     <div className="p-6 min-h-screen bg-gradient-to-br from-sky-100 via-blue-50 to-indigo-100 text-gray-800">
       <motion.h2 
-        className="text-3xl font-bold mb-6 text-center text-indigo-800 drop-shadow-sm"
+        className="text-3xl font-bold mb-6 text-center text-indigo-800 drop-shadow-sm flex justify-center items-center"
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6 }}
@@ -547,317 +717,260 @@ const DataQuality = () => {
         Data Quality Analysis
       </motion.h2>
 
-      {/* Removed the top right robotic button */}
+
+
+      <AnimatePresence>
+        {showTableSummary && tableName && tableMetadata[tableName] && (
+          <TableSummaryModal
+            tableName={tableName}
+            summary={tableMetadata[tableName]}
+            onClose={() => setShowTableSummary(false)}
+          />
+        )}
+      </AnimatePresence>
+
+
+
 
       <AnimatePresence>
         {showFormulaPopup && <FormulaPopup onClose={() => setShowFormulaPopup(false)} />}
       </AnimatePresence>
-
+      
       <AnimatePresence>
-        {showDescription && <RoboticDescription />}
+        {showMetricInfo.metric && showMetricInfo.table && (
+          <MetricInfoPopup
+            metric={showMetricInfo.metric}
+            table={showMetricInfo.table}
+            onClose={() => setShowMetricInfo({metric: null, table: null})}
+          />
+        )}
       </AnimatePresence>
 
-      <div className="flex gap-6">
+      {loading && (
+        <div className="text-center py-8">
+          <motion.div 
+            animate={{ rotate: 360 }}
+            transition={{ repeat: Infinity, duration: 1, ease: "linear" }}
+            className="inline-block w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full mb-2"
+          />
+          <p className="text-indigo-700">Loading data...</p>
+        </div>
+      )}
+
+      {error && (
         <motion.div 
-          initial={{ x: -100, opacity: 0 }}
-          animate={{ x: 0, opacity: 1 }}
-          transition={{ duration: 0.6 }}
-          className="w-1/4 bg-white rounded-lg p-4 shadow-xl h-fit border border-gray-100"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mt-4 p-4 bg-red-100 text-red-700 rounded-md border-l-4 border-red-500 shadow-md"
         >
-          <h3 className="text-lg font-semibold mb-4 text-indigo-700 border-b pb-2">Available Tables</h3>
-          <div className="space-y-2">
-            {tables.map((table, index) => (
-              <motion.button
-                key={table}
-                onClick={() => handleTableSelection(table)}
-                className={`w-full text-left px-4 py-2 rounded-md transition-all duration-300 ${
-                  selectedTable === table 
-                    ? 'bg-indigo-600 text-white shadow-md' 
-                    : 'hover:bg-indigo-100'
-                }`}
-                whileHover={{ scale: 1.02, x: 5 }}
-                whileTap={{ scale: 0.98 }}
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: index * 0.1 }}
-              >
-                {table}
-              </motion.button>
-            ))}
+          <div className="flex items-center">
+            <AlertCircle className="h-5 w-5 mr-2" />
+            {error}
           </div>
         </motion.div>
+      )}
 
-        <motion.div 
-          initial={{ x: 100, opacity: 0 }}
-          animate={{ x: 0, opacity: 1 }}
-          transition={{ duration: 0.6 }}
-          className="flex-1"
-        >
-          {loading && (
-            <div className="text-center py-8">
+      {data && data.length > 0 && (
+        <div className="grid grid-cols-12 gap-6">
+          {/* Main Visualization Area - 9 columns */}
+          <div className="col-span-9">
+            {data.map((tableData, tableIndex) => (
               <motion.div 
-                animate={{ rotate: 360 }}
-                transition={{ repeat: Infinity, duration: 1, ease: "linear" }}
-                className="inline-block w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full mb-2"
-              />
-              <p className="text-indigo-700">Loading data...</p>
-            </div>
-          )}
+                key={tableData.table_name} 
+                className="mb-8 p-6 bg-white bg-opacity-80 rounded-xl shadow-lg border border-gray-100"
+                initial={{ opacity: 0, y: 50 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: tableIndex * 0.2 }}
+              >
+                <h3 className="text-xl font-bold mb-4 text-indigo-800 border-b pb-2">{tableData.table_name}</h3>
+                {renderSummaryMetrics(tableData)}
 
-          {error && (
-            <motion.div 
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="mt-4 p-4 bg-red-100 text-red-700 rounded-md border-l-4 border-red-500 shadow-md"
-            >
-              <div className="flex items-center">
-                <AlertCircle className="h-5 w-5 mr-2" />
-                {error}
-              </div>
-            </motion.div>
-          )}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  {renderMetricPieChart(
+                    tableData.completeness_percentage,
+                    "Completeness",
+                    COLORS.completeness,
+                    () => toggleDetail(tableData.table_name, "completeness"),
+                    tableData.table_name,
+                    "completeness"
+                  )}
+                  {renderMetricPieChart(
+                    tableData.uniqueness_percentage,
+                    "Uniqueness",
+                    COLORS.uniqueness,
+                    () => toggleDetail(tableData.table_name, "uniqueness"),
+                    tableData.table_name,
+                    "uniqueness"
+                  )}
+                 {renderMetricPieChart(
+    (tableData.missing_values / (tableData.total_rows * Object.keys(tableData.columns).length)) * 100,
+    "Missing Values",
+    COLORS.missing,
+    () => toggleDetail(tableData.table_name, "missing"),
+    tableData.table_name,
+    "missing"
+  )}
+  {renderMetricPieChart(
+    (tableData.duplicate_rows / tableData.total_rows) * 100,
+    "Duplicates",
+    COLORS.duplicate,
+    () => toggleDetail(tableData.table_name, "duplicates"),
+    tableData.table_name,
+    "duplicate"
+  )}
+</div>
 
-          {data && data.length > 0 && (
-            <div className="space-y-8">
-              {data.map((tableData, tableIndex) => (
-                <motion.div 
-                  key={tableData.table_name} 
-                  className="mb-8 p-6 bg-white bg-opacity-80 rounded-xl shadow-lg border border-gray-100"
-                  initial={{ opacity: 0, y: 50 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: tableIndex * 0.2 }}
-                >
-                  <h3 className="text-xl font-bold mb-4 text-indigo-800 border-b pb-2">{tableData.table_name}</h3>
-                  {renderSummaryMetrics(tableData)}
+<AnimatePresence>
+  {selectedDetails[tableData.table_name] === "completeness" && (
+    <motion.div
+      initial={{ height: 0, opacity: 0 }}
+      animate={{ height: "auto", opacity: 1 }}
+      exit={{ height: 0, opacity: 0 }}
+      className="mt-6 overflow-hidden"
+    >
+      <div className="bg-blue-50 p-4 rounded-lg shadow-inner mb-4">
+        <div className="flex justify-between items-center mb-2">
+          <h3 className="font-bold text-blue-800 flex items-center">
+            <ChevronUp className="h-5 w-5 mr-1" />
+            Column Completeness Analysis
+          </h3>
+          <button 
+            onClick={() => toggleDetail(tableData.table_name, "")}
+            className="text-blue-500 hover:text-blue-700"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        {renderBarChart(
+          "Column Completeness (%)",
+          Object.fromEntries(
+            Object.entries(tableData.columns).map(([column, metrics]) => [
+              column,
+              metrics.completeness_percentage
+            ])
+          ),
+          COLORS.completeness
+        )}
+      </div>
+    </motion.div>
+  )}
 
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    {renderMetricPieChart(
-                      tableData.completeness_percentage,
-                      "Completeness",
-                      COLORS.completeness,
-                      () => toggleDetail(tableData.table_name, "completeness"),
-                      tableData.table_name
-                    )}
-                    {renderMetricPieChart(
-                      tableData.uniqueness_percentage,
-                      "Uniqueness",
-                      COLORS.uniqueness,
-                      () => toggleDetail(tableData.table_name, "uniqueness"),
-                      tableData.table_name
-                    )}
-                    {renderMetricPieChart(
-                      (tableData.missing_values / tableData.total_rows) * 100,
-                      "Missing Values",
-                      COLORS.missing,
-                      () => toggleDetail(tableData.table_name, "missing"),
-                      tableData.table_name
-                    )}
-                    {renderMetricPieChart(
-                      (tableData.duplicate_rows / tableData.total_rows) * 100,
-                      "Duplicates",
-                      COLORS.duplicate,
-                      () => toggleDetail(tableData.table_name, "duplicates"),
-                      tableData.table_name
-                    )}
-                  </div>
+  {selectedDetails[tableData.table_name] === "uniqueness" && (
+    <motion.div
+      initial={{ height: 0, opacity: 0 }}
+      animate={{ height: "auto", opacity: 1 }}
+      exit={{ height: 0, opacity: 0 }}
+      className="mt-6 overflow-hidden"
+    >
+      <div className="bg-green-50 p-4 rounded-lg shadow-inner mb-4">
+        <div className="flex justify-between items-center mb-2">
+          <h3 className="font-bold text-green-800 flex items-center">
+            <ChevronUp className="h-5 w-5 mr-1" />
+            Column Uniqueness Analysis
+          </h3>
+          <button 
+            onClick={() => toggleDetail(tableData.table_name, "")}
+            className="text-green-500 hover:text-green-700"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        {renderBarChart(
+          "Column Uniqueness (%)",
+          Object.fromEntries(
+            Object.entries(tableData.columns).map(([column, metrics]) => [
+              column,
+              metrics.uniqueness_percentage
+            ])
+          ),
+          COLORS.uniqueness
+        )}
+      </div>
+    </motion.div>
+  )}
 
-                  <AnimatePresence>
-                    {selectedDetails[tableData.table_name] === "completeness" && (
-                      <motion.div
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: "auto" }}
-                        exit={{ opacity: 0, height: 0 }}
-                        className="mt-6"
-                      >
-                        {renderBarChart(
-                          "Column Completeness (%)",
-                          Object.entries(tableData.columns).reduce(
-                            (acc, [col, metrics]) => ({
-                              ...acc,
-                              [col]: metrics.completeness_percentage,
-                            }),
-                            {}
-                            ),
-                            COLORS.completeness)};
-                            </motion.div>
-                            )}
-                            </AnimatePresence>
-                            
-                            <AnimatePresence>
-                              {selectedDetails[tableData.table_name] === "missing" && (
-                                <motion.div
-                                  initial={{ opacity: 0, height: 0 }}
-                                  animate={{ opacity: 1, height: "auto" }}
-                                  exit={{ opacity: 0, height: 0 }}
-                                  className="mt-6"
-                                >
-                                  {renderBarChart(
-                                    "Missing Values by Column",
-                                    Object.entries(tableData.columns).reduce(
-                                      (acc, [col, metrics]) => ({
-                                        ...acc,
-                                        [col]: metrics.missing_values,
-                                      }),
-                                      {}
-                                    ),
-                                    COLORS.missing
-                                  )}
-                                </motion.div>
-                              )}
-                            </AnimatePresence>
-                            
-                            <AnimatePresence>
-                              {selectedDetails[tableData.table_name] === "uniqueness" && (
-                                <motion.div
-                                  initial={{ opacity: 0, height: 0 }}
-                                  animate={{ opacity: 1, height: "auto" }}
-                                  exit={{ opacity: 0, height: 0 }}
-                                  className="mt-6"
-                                >
-                                  {renderBarChart(
-                                    "Column Uniqueness (%)",
-                                    Object.entries(tableData.columns).reduce(
-                                      (acc, [col, metrics]) => ({
-                                        ...acc,
-                                        [col]: metrics.uniqueness_percentage,
-                                      }),
-                                      {}
-                                    ),
-                                    COLORS.uniqueness
-                                  )}
-                                </motion.div>
-                              )}
-                            </AnimatePresence>
-                            
-                            <AnimatePresence>
-                              {selectedDetails[tableData.table_name] === "duplicates" && (
-                                <motion.div
-                                  initial={{ opacity: 0, height: 0 }}
-                                  animate={{ opacity: 1, height: "auto" }}
-                                  exit={{ opacity: 0, height: 0 }}
-                                  className="mt-6"
-                                >
-                                  {renderBarChart(
-                                    "Duplicate Values Analysis",
-                                    {
-                                      "Total Rows": tableData.total_rows,
-                                      "Duplicate Rows": tableData.duplicate_rows
-                                    },
-                                    COLORS.duplicate
-                                  )}
-                                </motion.div>
-                              )}
-                            </AnimatePresence>
-                            
-                            {/* AI Analysis Summary Section */}
-                            <div className="mt-8 bg-gray-50 p-4 rounded-lg border border-gray-200">
-                              <div 
-                                className="flex justify-between items-center cursor-pointer"
-                                onClick={() => {
-                                  setTableSummaries(prev => ({
-                                    ...prev,
-                                    [tableData.table_name]: {
-                                      ...prev[tableData.table_name],
-                                      isExpanded: !prev[tableData.table_name]?.isExpanded
-                                    }
-                                  }));
-                                }}
-                              >
-                                <h4 className="text-lg font-semibold flex items-center">
-                                  <Bot className="h-5 w-5 mr-2 text-indigo-600" />
-                                  AI Analysis Summary
-                                </h4>
-                                {tableSummaries[tableData.table_name]?.isExpanded ? 
-                                  <ChevronUp className="h-5 w-5 text-gray-500" /> : 
-                                  <ChevronDown className="h-5 w-5 text-gray-500" />
-                                }
-                              </div>
-                              
-                              <AnimatePresence>
-                                {tableSummaries[tableData.table_name]?.isExpanded && (
-                                  <motion.div
-                                    initial={{ opacity: 0, height: 0 }}
-                                    animate={{ opacity: 1, height: "auto" }}
-                                    exit={{ opacity: 0, height: 0 }}
-                                    className="mt-4"
-                                  >
-                                    <p className="text-gray-700">{tableData.llm_analysis}</p>
-                                  </motion.div>
-                                )}
-                              </AnimatePresence>
-                            </div>
-                            
-                            {/* Info Popups for Missing Values and Duplicates */}
-                            <AnimatePresence>
-                              {showMissingInfo === tableData.table_name && (
-                                <InfoPopup
-                                  title="Missing Values Information"
-                                  content={
-                                    <div className="space-y-4">
-                                      <p>Missing values represent fields that contain null, undefined, or empty values in your dataset.</p>
-                                      <div className="bg-yellow-50 p-3 rounded-lg">
-                                        <h5 className="font-semibold text-yellow-800 mb-2">Impact:</h5>
-                                        <ul className="list-disc pl-5 text-yellow-700 space-y-1">
-                                          <li>Reduces data quality and analytical reliability</li>
-                                          <li>May lead to biased insights or predictions</li>
-                                          <li>Can cause errors in data processing pipelines</li>
-                                        </ul>
-                                      </div>
-                                      <div className="bg-green-50 p-3 rounded-lg">
-                                        <h5 className="font-semibold text-green-800 mb-2">Recommendations:</h5>
-                                        <ul className="list-disc pl-5 text-green-700 space-y-1">
-                                          <li>Identify patterns in missing data</li>
-                                          <li>Consider appropriate imputation techniques</li>
-                                          <li>Implement data validation at collection points</li>
-                                          <li>Document reasons for missing values when possible</li>
-                                        </ul>
-                                      </div>
-                                    </div>
-                                  }
-                                  onClose={() => setShowMissingInfo(null)}
-                                />
-                              )}
-                            </AnimatePresence>
-                            
-                            <AnimatePresence>
-                              {showDuplicateInfo === tableData.table_name && (
-                                <InfoPopup
-                                  title="Duplicate Records Information"
-                                  content={
-                                    <div className="space-y-4">
-                                      <p>Duplicate records are rows that contain identical or nearly identical information across all fields.</p>
-                                      <div className="bg-orange-50 p-3 rounded-lg">
-                                        <h5 className="font-semibold text-orange-800 mb-2">Impact:</h5>
-                                        <ul className="list-disc pl-5 text-orange-700 space-y-1">
-                                          <li>Skews analytical results and statistics</li>
-                                          <li>Consumes unnecessary storage resources</li>
-                                          <li>May indicate data entry or processing errors</li>
-                                          <li>Reduces trust in data accuracy</li>
-                                        </ul>
-                                      </div>
-                                      <div className="bg-blue-50 p-3 rounded-lg">
-                                        <h5 className="font-semibold text-blue-800 mb-2">Recommendations:</h5>
-                                        <ul className="list-disc pl-5 text-blue-700 space-y-1">
-                                          <li>Implement unique constraints where appropriate</li>
-                                          <li>Use data verification before insertion</li>
-                                          <li>Create automated deduplication processes</li>
-                                          <li>Review data collection methods for potential issues</li>
-                                        </ul>
-                                      </div>
-                                    </div>
-                                  }
-                                  onClose={() => setShowDuplicateInfo(null)}
-                                />
-                              )}
-                            </AnimatePresence>
-                            </motion.div>
-                            ))}
-                            </div>
-                            )}
-                            </motion.div>
-                            </div>
-                            </div>
-                            );
-                            };
-                            
-                            export default DataQuality;
+  {selectedDetails[tableData.table_name] === "missing" && (
+    <motion.div
+      initial={{ height: 0, opacity: 0 }}
+      animate={{ height: "auto", opacity: 1 }}
+      exit={{ height: 0, opacity: 0 }}
+      className="mt-6 overflow-hidden"
+    >
+      <div className="bg-yellow-50 p-4 rounded-lg shadow-inner mb-4">
+        <div className="flex justify-between items-center mb-2">
+          <h3 className="font-bold text-yellow-800 flex items-center">
+            <ChevronUp className="h-5 w-5 mr-1" />
+            Column Missing Values Analysis
+          </h3>
+          <button 
+            onClick={() => toggleDetail(tableData.table_name, "")}
+            className="text-yellow-500 hover:text-yellow-700"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        {renderBarChart(
+          "Missing Values by Column (%)",
+          Object.fromEntries(
+            Object.entries(tableData.columns).map(([column, metrics]) => [
+              column,
+              metrics.null_values_percentage
+            ])
+          ),
+          COLORS.missing
+        )}
+      </div>
+    </motion.div>
+  )}
+
+  {selectedDetails[tableData.table_name] === "duplicates" && (
+    <motion.div
+      initial={{ height: 0, opacity: 0 }}
+      animate={{ height: "auto", opacity: 1 }}
+      exit={{ height: 0, opacity: 0 }}
+      className="mt-6 overflow-hidden"
+    >
+      <div className="bg-orange-50 p-4 rounded-lg shadow-inner mb-4">
+        <div className="flex justify-between items-center mb-2">
+          <h3 className="font-bold text-orange-800 flex items-center">
+            <ChevronUp className="h-5 w-5 mr-1" />
+            Column Duplicates Analysis
+          </h3>
+          <button 
+            onClick={() => toggleDetail(tableData.table_name, "")}
+            className="text-orange-500 hover:text-orange-700"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <p className="text-gray-700 mb-4">
+          This table has {tableData.duplicate_rows} duplicate rows 
+          ({((tableData.duplicate_rows / tableData.total_rows) * 100).toFixed(2)}% of total)
+        </p>
+      </div>
+    </motion.div>
+  )}
+</AnimatePresence>
+</motion.div>
+))}
+</div>
+
+{/* Sidebar - 3 columns */}
+<div className="col-span-3">
+    {(llmAnalysis || data.length > 0) && (
+      <motion.div 
+        initial={{ opacity: 0, x: 20 }}
+        animate={{ opacity: 1, x: 0 }}
+        className="sticky top-4 mt-4"
+      >
+        {renderAIAnalysisBox()}
+      </motion.div>
+    )}
+  </div>
+</div>
+)}
+</div>
+);
+};
+
+export default DataQuality;

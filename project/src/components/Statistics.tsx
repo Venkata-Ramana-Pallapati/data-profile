@@ -25,7 +25,7 @@ const Statistics = () => {
   const [aiAnalysis, setAiAnalysis] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
   const [tableName, setTableName] = useState(window.selectedTableName || '');
-  const [showAiInsights, setShowAiInsights] = useState(false);
+  const [showAiInsights, setShowAiInsights] = useState(true); // Default to showing insights
   const [hoveredStat, setHoveredStat] = useState<string | number | null>(null);
   
   // Listen for table selection events
@@ -138,25 +138,32 @@ const Statistics = () => {
     return num.toLocaleString(undefined, { maximumFractionDigits: 2 });
   };
 
-  // Render the AI insights section with collapsible functionality
-  const renderAiInsights = () => {
-    if (!aiAnalysis && !aiLoading) return null;
-
+  // Render the AI insights section for the RIGHT sidebar
+  const renderAiInsightsSidebar = () => {
     return (
-      <div className="mb-6 overflow-hidden rounded-lg shadow bg-white border border-gray-200">
-        <button 
-          onClick={() => setShowAiInsights(!showAiInsights)}
-          className="w-full px-6 py-4 flex items-center justify-between bg-gradient-to-r from-blue-600 to-indigo-600 text-white transition-all duration-300 hover:from-blue-700 hover:to-indigo-700"
-        >
-          <div className="flex items-center">
-            <span className="text-xl mr-2">✨</span>
-            <h2 className="text-xl font-bold">AI Insights for {tableName}</h2>
+      <div className="bg-blue-50 rounded-lg shadow-md h-full overflow-auto sticky top-6">
+        <div className="sticky top-0 z-10">
+          <div className="px-4 py-5 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-t-lg">
+            <div className="flex items-center justify-between text-white">
+              <div className="flex items-center">
+                <span className="text-xl mr-2">✨</span>
+                <h2 className="text-xl font-bold">AI Insights</h2>
+              </div>
+              <button 
+                onClick={() => setShowAiInsights(!showAiInsights)}
+                className="p-1 hover:bg-blue-500 rounded transition-colors duration-200"
+              >
+                {showAiInsights ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+              </button>
+            </div>
+            {!showAiInsights && (
+              <p className="text-blue-100 text-sm mt-1">Click to expand</p>
+            )}
           </div>
-          {showAiInsights ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
-        </button>
+        </div>
         
         {showAiInsights && (
-          <div className="p-6 bg-white">
+          <div className="p-4 bg-white">
             {aiLoading ? (
               <div className="flex flex-col items-center space-y-4 py-8">
                 <div className="animate-spin rounded-full h-10 w-10 border-4 border-gray-300 border-t-blue-600"></div>
@@ -242,209 +249,206 @@ const Statistics = () => {
     if (!stats || !stats.columns) return null;
     
     return (
-      <div className="mb-6">
-        <h3 className="text-2xl font-bold text-gray-800 mb-6">Column Details</h3>
-        <div className="space-y-12">
-          {Object.entries(stats.columns).map(([colName, colData]) => {
-            const isNumeric = typeof colData.mean === 'number';
-            
-            // Prepare data for mini distribution chart
-            const distributionData = isNumeric ? [
-              { name: 'Min', value: colData.min },
-              { name: 'Q1', value: colData.percentiles['25%'] || colData.min },
-              { name: 'Median', value: colData.percentiles['50%'] || colData.mean },
-              { name: 'Q3', value: colData.percentiles['75%'] || colData.max },
-              { name: 'Max', value: colData.max }
-            ] : [];
-            
-            return (
-              <div key={colName} className="bg-white rounded-lg shadow-lg overflow-hidden border border-gray-200">
-                <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-white">
-                  <div className="flex justify-between items-center">
-                    <div className="flex items-center">
-                      <Database className="text-blue-600 mr-3" size={24} />
-                      <h4 className="font-bold text-xl text-gray-800 truncate" title={colName}>
-                        {colName}
-                      </h4>
-                    </div>
-                    <span className="px-4 py-2 text-sm font-medium rounded-full bg-blue-100 text-blue-800">
-                      {colData.dtype || (isNumeric ? 'numeric' : 'categorical')}
-                    </span>
+      <div className="space-y-12">
+        {Object.entries(stats.columns).map(([colName, colData]) => {
+          const isNumeric = typeof colData.mean === 'number';
+          
+          // Prepare data for mini distribution chart
+          const distributionData = isNumeric ? [
+            { name: 'Min', value: colData.min },
+            { name: 'Q1', value: colData.percentiles['25%'] || colData.min },
+            { name: 'Median', value: colData.percentiles['50%'] || colData.mean },
+            { name: 'Q3', value: colData.percentiles['75%'] || colData.max },
+            { name: 'Max', value: colData.max }
+          ] : [];
+          
+          return (
+            <div key={colName} className="bg-white rounded-lg shadow-lg overflow-hidden border border-gray-200">
+              <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-white">
+                <div className="flex justify-between items-center">
+                  <div className="flex items-center">
+                    <Database className="text-blue-600 mr-3" size={24} />
+                    <h4 className="font-bold text-xl text-gray-800 truncate" title={colName}>
+                      {colName}
+                    </h4>
                   </div>
-                </div>
-                
-                <div className="p-6">
-                  {/* Individual stat cards in a grid */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 mb-6">
-                    {/* Count Card */}
-                    <StatCard
-                      title="Count"
-                      value={formatNumber(colData.count)}
-                      bgColor="bg-blue-50"
-                      hoverBgColor="bg-blue-100"
-                      textColor="text-blue-700"
-                      hoverTextColor="text-blue-800"
-                      icon={<Database size={24} className="text-blue-600" />}
-                      statId={`${colName}-count`}
-                    />
-                    
-                    {/* Missing Card */}
-                    <StatCard
-                      title="Missing"
-                      value={
-                        <>
-                          {formatNumber(colData.missing)}
-                          <span className="text-sm text-gray-500 ml-2">
-                            ({((colData.missing / colData.count) * 100).toFixed(1)}%)
-                          </span>
-                        </>
-                      }
-                      bgColor="bg-red-50"
-                      hoverBgColor="bg-red-100"
-                      textColor="text-red-700"
-                      hoverTextColor="text-red-800"
-                      icon={<Info size={24} className="text-red-600" />}
-                      statId={`${colName}-missing`}
-                    />
-                    
-                    {isNumeric ? (
-                      <>
-                        {/* Mean Card */}
-                        <StatCard
-                          title="Mean"
-                          value={formatNumber(colData.mean)}
-                          bgColor="bg-green-50"
-                          hoverBgColor="bg-green-100"
-                          textColor="text-green-700"
-                          hoverTextColor="text-green-800"
-                          icon={colData.mean >= 0 ? 
-                            <TrendingUp size={24} className="text-green-600" /> : 
-                            <TrendingDown size={24} className="text-red-600" />
-                          }
-                          statId={`${colName}-mean`}
-                        />
-                        
-                        {/* Std Dev Card */}
-                        <StatCard
-                          title="Std Dev"
-                          value={formatNumber(colData.std)}
-                          bgColor="bg-purple-50"
-                          hoverBgColor="bg-purple-100"
-                          textColor="text-purple-700"
-                          hoverTextColor="text-purple-800"
-                          icon={<BarChart2 size={24} className="text-purple-600" />}
-                          statId={`${colName}-std`}
-                        />
-                        
-                        {/* Min Card */}
-                        <StatCard
-                          title="Min"
-                          value={formatNumber(colData.min)}
-                          bgColor="bg-yellow-50"
-                          hoverBgColor="bg-yellow-100"
-                          textColor="text-yellow-700"
-                          hoverTextColor="text-yellow-800"
-                          icon={<TrendingDown size={24} className="text-yellow-600" />}
-                          statId={`${colName}-min`}
-                        />
-                        
-                        {/* Max Card */}
-                        <StatCard
-                          title="Max"
-                          value={formatNumber(colData.max)}
-                          bgColor="bg-indigo-50"
-                          hoverBgColor="bg-indigo-100"
-                          textColor="text-indigo-700"
-                          hoverTextColor="text-indigo-800"
-                          icon={<TrendingUp size={24} className="text-indigo-600" />}
-                          statId={`${colName}-max`}
-                        />
-                      </>
-                    ) : (
-                      <>
-                        {/* Unique Values Card */}
-                        <StatCard
-                          title="Unique Values"
-                          value={formatNumber(colData.unique)}
-                          bgColor="bg-green-50"
-                          hoverBgColor="bg-green-100"
-                          textColor="text-green-700"
-                          hoverTextColor="text-green-800"
-                          icon={<PieChart size={24} className="text-green-600" />}
-                          statId={`${colName}-unique`}
-                        />
-                        
-                        {/* Top Value Card */}
-                        <StatCard
-                          title="Top Value"
-                          value={
-                            <span className="truncate block max-w-xs" title={String(colData.top)}>
-                              {String(colData.top)}
-                            </span>
-                          }
-                          bgColor="bg-purple-50"
-                          hoverBgColor="bg-purple-100"
-                          textColor="text-purple-700"
-                          hoverTextColor="text-purple-800"
-                          icon={<TrendingUp size={24} className="text-purple-600" />}
-                          statId={`${colName}-top`}
-                        />
-                      </>
-                    )}
-                  </div>
-                  
-                  {isNumeric && (
-                    <div className="mt-8 border-t pt-6 border-gray-100">
-                      <div className="flex items-center mb-4">
-                        <BarChart2 size={20} className="text-blue-600 mr-2" />
-                        <h5 className="text-lg font-medium text-gray-700">
-                          Value Distribution
-                        </h5>
-                      </div>
-                      <div className="bg-gray-50 p-4 rounded-lg">
-                        <div className="h-48 w-full">
-                          <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={distributionData}>
-                              <XAxis dataKey="name" tick={{ fontSize: 12 }} />
-                              <YAxis width={60} />
-                              <Tooltip 
-                                labelStyle={{ fontWeight: 'bold' }} 
-                                contentStyle={{ 
-                                  borderRadius: '8px', 
-                                  border: 'none', 
-                                  boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)' 
-                                }}
-                              />
-                              <Bar 
-                                dataKey="value" 
-                                fill="#6366f1" 
-                                barSize={35} 
-                                radius={[4, 4, 0, 0]} 
-                                animationDuration={300}
-                                onMouseOver={() => {
-                                  // Add hover effect to chart bars
-                                  document.querySelectorAll('.recharts-bar-rectangle').forEach(rect => {
-                                    rect.classList.add('opacity-80');
-                                  });
-                                }}
-                                onMouseOut={() => {
-                                  // Remove hover effect from chart bars
-                                  document.querySelectorAll('.recharts-bar-rectangle').forEach(rect => {
-                                    rect.classList.remove('opacity-80');
-                                  });
-                                }}
-                              />
-                            </BarChart>
-                          </ResponsiveContainer>
-                        </div>
-                      </div>
-                    </div>
-                  )}
+                  <span className="px-4 py-2 text-sm font-medium rounded-full bg-blue-100 text-blue-800">
+                    {colData.dtype || (isNumeric ? 'numeric' : 'categorical')}
+                  </span>
                 </div>
               </div>
-            );
-          })}
-        </div>
+              
+              <div className="p-6">
+                {/* Individual stat cards in a grid */}
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 mb-6">
+                  {/* Count Card */}
+                  <StatCard
+                    title="Count"
+                    value={formatNumber(colData.count)}
+                    bgColor="bg-blue-50"
+                    hoverBgColor="bg-blue-100"
+                    textColor="text-blue-700"
+                    hoverTextColor="text-blue-800"
+                    icon={<Database size={24} className="text-blue-600" />}
+                    statId={`${colName}-count`}
+                  />
+                  
+                  {/* Missing Card */}
+                  <StatCard
+                    title="Missing"
+                    value={
+                      <>
+                        {formatNumber(colData.missing)}
+                        <span className="text-sm text-gray-500 ml-2">
+                          ({((colData.missing / colData.count) * 100).toFixed(1)}%)
+                        </span>
+                      </>
+                    }
+                    bgColor="bg-red-50"
+                    hoverBgColor="bg-red-100"
+                    textColor="text-red-700"
+                    hoverTextColor="text-red-800"
+                    icon={<Info size={24} className="text-red-600" />}
+                    statId={`${colName}-missing`}
+                  />
+                  
+                  {isNumeric ? (
+                    <>
+                      {/* Mean Card */}
+                      <StatCard
+                        title="Mean"
+                        value={formatNumber(colData.mean)}
+                        bgColor="bg-green-50"
+                        hoverBgColor="bg-green-100"
+                        textColor="text-green-700"
+                        hoverTextColor="text-green-800"
+                        icon={colData.mean >= 0 ? 
+                          <TrendingUp size={24} className="text-green-600" /> : 
+                          <TrendingDown size={24} className="text-red-600" />
+                        }
+                        statId={`${colName}-mean`}
+                      />
+                      
+                      {/* Std Dev Card */}
+                      <StatCard
+                        title="Std Dev"
+                        value={formatNumber(colData.std)}
+                        bgColor="bg-purple-50"
+                        hoverBgColor="bg-purple-100"
+                        textColor="text-purple-700"
+                        hoverTextColor="text-purple-800"
+                        icon={<BarChart2 size={24} className="text-purple-600" />}
+                        statId={`${colName}-std`}
+                      />
+                      
+                      {/* Min Card */}
+                      <StatCard
+                        title="Min"
+                        value={formatNumber(colData.min)}
+                        bgColor="bg-yellow-50"
+                        hoverBgColor="bg-yellow-100"
+                        textColor="text-yellow-700"
+                        hoverTextColor="text-yellow-800"
+                        icon={<TrendingDown size={24} className="text-yellow-600" />}
+                        statId={`${colName}-min`}
+                      />
+                      
+                      {/* Max Card */}
+                      <StatCard
+                        title="Max"
+                        value={formatNumber(colData.max)}
+                        bgColor="bg-indigo-50"
+                        hoverBgColor="bg-indigo-100"
+                        textColor="text-indigo-700"
+                        hoverTextColor="text-indigo-800"
+                        icon={<TrendingUp size={24} className="text-indigo-600" />}
+                        statId={`${colName}-max`}
+                      />
+                    </>
+                  ) : (
+                    <>
+                      {/* Unique Values Card */}
+                      <StatCard
+                        title="Unique Values"
+                        value={formatNumber(colData.unique)}
+                        bgColor="bg-green-50"
+                        hoverBgColor="bg-green-100"
+                        textColor="text-green-700"
+                        hoverTextColor="text-green-800"
+                        icon={<PieChart size={24} className="text-green-600" />}
+                        statId={`${colName}-unique`}
+                      />
+                      
+                      {/* Top Value Card */}
+                      <StatCard
+                        title="Top Value"
+                        value={
+                          <span className="truncate block max-w-xs" title={String(colData.top)}>
+                            {String(colData.top)}
+                          </span>
+                        }
+                        bgColor="bg-purple-50"
+                        hoverBgColor="bg-purple-100"
+                        textColor="text-purple-700"
+                        hoverTextColor="text-purple-800"
+                        icon={<TrendingUp size={24} className="text-purple-600" />}
+                        statId={`${colName}-top`}
+                      />
+                    </>
+                  )}
+                </div>
+                
+                {isNumeric && (
+                  <div className="mt-8 border-t pt-6 border-gray-100">
+                    <div className="flex items-center mb-4">
+                      <BarChart2 size={20} className="text-blue-600 mr-2" />
+                      <h5 className="text-lg font-medium text-gray-700">
+                        Value Distribution
+                      </h5>
+                    </div>
+                    <div className="bg-gray-50 p-4 rounded-lg">
+                      <div className="h-48 w-full">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={distributionData}>
+                            <XAxis dataKey="name" tick={{ fontSize: 12 }} />
+                            <YAxis width={60} />
+                            <Tooltip 
+                              labelStyle={{ fontWeight: 'bold' }} 
+                              contentStyle={{ 
+                                borderRadius: '8px', 
+                                border: 'none', 
+                                boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)' 
+                              }}
+                            />
+                            <Bar 
+                              dataKey="value" 
+                              fill="#6366f1" 
+                              barSize={35} 
+                              radius={[4, 4, 0, 0]} 
+                              animationDuration={300}
+                              onMouseOver={() => {
+                                // Add hover effect to chart bars
+                                document.querySelectorAll('.recharts-bar-rectangle').forEach(rect => {
+                                  rect.classList.add('opacity-80');
+                                });
+                              }}
+                              onMouseOut={() => {
+                                // Remove hover effect from chart bars
+                                document.querySelectorAll('.recharts-bar-rectangle').forEach(rect => {
+                                  rect.classList.remove('opacity-80');
+                                });
+                              }}
+                            />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
       </div>
     );
   };
@@ -486,26 +490,32 @@ const Statistics = () => {
   return (
     <div className="min-h-screen bg-gray-100 p-6">
       <div className="max-w-7xl mx-auto">
-        <div className="mb-8 flex justify-between items-center">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">Data Profile: {tableName}</h1>
-            <p className="text-gray-600 mt-2 text-lg">
-              Interactive data insights and column analytics
-            </p>
-          </div>
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-gray-900">Data Profile: {tableName}</h1>
+          <p className="text-gray-600 mt-2 text-lg">
+            Interactive data insights and column analytics
+          </p>
           
           {loading && stats && (
-            <div className="bg-blue-100 text-blue-700 px-4 py-2 rounded-lg flex items-center">
+            <div className="bg-blue-100 text-blue-700 px-4 py-2 rounded-lg inline-flex items-center mt-4">
               <div className="animate-spin rounded-full h-4 w-4 border-2 border-blue-600 border-t-transparent mr-2"></div>
               <span className="text-sm">Refreshing...</span>
             </div>
           )}
         </div>
 
-        {/* Main content area */}
-        <div className="space-y-8">
-          {renderColumnCards()}
-          {renderAiInsights()}
+        {/* Main content area with right sidebar layout */}
+        <div className="grid grid-cols-12 gap-6">
+          {/* Main content - 9 columns */}
+          <div className="col-span-12 lg:col-span-9">
+            <h3 className="text-2xl font-bold text-gray-800 mb-6">Column Details</h3>
+            {renderColumnCards()}
+          </div>
+          
+          {/* AI Insights Sidebar - 3 columns, now on the RIGHT */}
+          <div className="col-span-12 lg:col-span-3">
+            {renderAiInsightsSidebar()}
+          </div>
         </div>
       </div>
     </div>

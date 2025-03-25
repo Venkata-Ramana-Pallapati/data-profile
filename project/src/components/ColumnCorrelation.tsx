@@ -21,21 +21,6 @@ const ColumnCorrelation = () => {
   const [zoomedColumn, setZoomedColumn] = useState<number | null>(null);
   const matrixRef = useRef<HTMLDivElement>(null);
   
-  // Enhanced cache with longer expiration (1 day = 24 hours)
-  const globalDataCache = useRef<{
-    data: [string, string, number][] | null, 
-    columns: string[] | null,
-    matrix: number[][] | null,
-    summary: string | null,
-    timestamp: number
-  }>({
-    data: null,
-    columns: null,
-    matrix: null,
-    summary: null,
-    timestamp: 0
-  });
-
   // Component mounted flag to prevent state updates after unmounting
   const isMounted = useRef(true);
   
@@ -50,7 +35,7 @@ const ColumnCorrelation = () => {
   useEffect(() => {
     fetchTables();
     if (view === 'global') {
-      fetchGlobalCorrelation();
+      loadGlobalCorrelation();
     }
   }, []);
 
@@ -87,27 +72,39 @@ const ColumnCorrelation = () => {
     }
   };
 
-  const fetchGlobalCorrelation = async () => {
-    // Check if we have cached data that's less than 24 hours old (1 day)
-    const cacheAge = Date.now() - globalDataCache.current.timestamp;
-    const CACHE_EXPIRATION = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
-    const cacheValid = globalDataCache.current.data && 
-                     globalDataCache.current.columns && 
-                     globalDataCache.current.matrix && 
-                     cacheAge < CACHE_EXPIRATION;
+  // Load global correlation data from localStorage or fetch from API if not available
+  const loadGlobalCorrelation = () => {
+    // Check if data exists in localStorage
+    const storedData = localStorage.getItem('globalCorrelationData');
     
-    if (cacheValid) {
-      // Use cached data immediately
-      console.log("Using cached global correlation data");
-      if (isMounted.current) {
-        setCorrelationData(globalDataCache.current.data!);
-        setUniqueColumns(globalDataCache.current.columns!);
-        setMatrix(globalDataCache.current.matrix!);
-        setAiSummary(globalDataCache.current.summary || '');
-        return;
+    if (storedData) {
+      try {
+        const parsedData = JSON.parse(storedData);
+        const cacheAge = Date.now() - parsedData.timestamp;
+        const CACHE_EXPIRATION = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
+        
+        if (cacheAge < CACHE_EXPIRATION) {
+          console.log("Using cached global correlation data from localStorage");
+          if (isMounted.current) {
+            setCorrelationData(parsedData.data);
+            setUniqueColumns(parsedData.columns);
+            setMatrix(parsedData.matrix);
+            setAiSummary(parsedData.summary || '');
+            return;
+          }
+        } else {
+          console.log("Cached data expired, fetching fresh data");
+        }
+      } catch (error) {
+        console.error("Error parsing stored data:", error);
       }
     }
     
+    // If no valid cached data, fetch from API
+    fetchGlobalCorrelation();
+  };
+
+  const fetchGlobalCorrelation = async () => {
     if (isMounted.current) {
       setIsLoading(true);
       setError(null);
@@ -118,14 +115,25 @@ const ColumnCorrelation = () => {
       const response = await fetch('http://127.0.0.1:8000/global_correlation');
       const data = await response.json();
       
-      // Process the data
-      const columns = processData(data.sorted_correlations);
+      // Debug response
+      console.log("Global correlation API response:", data);
+      
+      // Transform the new format to the expected [col1, col2, value] format
+      const transformedData = transformCorrelationData(data);
+      
+      // Check if transformedData exists and is an array
+      if (!transformedData || !Array.isArray(transformedData)) {
+        throw new Error('Invalid data format received from API');
+      }
+      
+      // Process the transformed data
+      const columns = processData(transformedData);
       
       // Generate a fresh matrix after processing data
       const size = columns.length;
       const correlationMatrix = Array.from({ length: size }, () => Array(size).fill(0));
       
-      data.sorted_correlations.forEach(([col1, col2, value]) => {
+      transformedData.forEach(([col1, col2, value]) => {
         const i = columns.indexOf(col1);
         const j = columns.indexOf(col2);
         if (i !== -1 && j !== -1) {
@@ -137,30 +145,49 @@ const ColumnCorrelation = () => {
       // Set diagonal to 1
       for (let i = 0; i < size; i++) correlationMatrix[i][i] = 1;
       
-      const summary = generateGlobalSummary(data.sorted_correlations, columns.length);
+      const summary = generateGlobalSummary(transformedData, columns.length);
       
-      // Update the cache with all processed data
-      globalDataCache.current = {
-        data: data.sorted_correlations,
+      // Store all processed data in localStorage
+      const storageData = {
+        data: transformedData,
         columns: columns,
         matrix: correlationMatrix,
         summary: summary,
         timestamp: Date.now()
       };
       
+      localStorage.setItem('globalCorrelationData', JSON.stringify(storageData));
+      
       if (isMounted.current) {
-        setCorrelationData(data.sorted_correlations);
+        setCorrelationData(transformedData);
         setUniqueColumns(columns);
         setMatrix(correlationMatrix);
         setAiSummary(summary);
         setIsLoading(false);
       }
     } catch (error) {
+      console.error("Error fetching global correlation:", error);
       if (isMounted.current) {
         setError('Failed to fetch global correlation data');
         setIsLoading(false);
       }
     }
+  };
+
+  // New function to transform the new API response format to the expected format
+  const transformCorrelationData = (data: any): [string, string, number][] => {
+    // Check if data is an array (new format) or has sorted_correlations property (old format)
+    if (Array.isArray(data)) {
+      // New format: array of {target, feature, importance} objects
+      return data.map(item => [item.target, item.feature, item.importance]);
+    } else if (data.sorted_correlations && Array.isArray(data.sorted_correlations)) {
+      // Old format: {sorted_correlations: [[col1, col2, value], ...]}
+      return data.sorted_correlations;
+    }
+    
+    // If neither format matches, return empty array
+    console.error("Unknown data format:", data);
+    return [];
   };
 
   const fetchCustomCorrelation = async () => {
@@ -274,22 +301,10 @@ Strongest: ${strongest[0].split('.').pop()} and ${strongest[1].split('.').pop()}
   const handleViewChange = (newView: ViewType) => {
     setView(newView);
     if (newView === 'global') {
-      // When switching to global view, display cached data immediately if available
-      // and fetch fresh data in the background if needed
-      if (globalDataCache.current.data && globalDataCache.current.columns && globalDataCache.current.matrix) {
-        // Immediately display cached data
-        setCorrelationData(globalDataCache.current.data);
-        setUniqueColumns(globalDataCache.current.columns);
-        setMatrix(globalDataCache.current.matrix);
-        setAiSummary(globalDataCache.current.summary || '');
-      } else {
-        // Reset and show loading state if no cache
-        resetMatrixData();
-        setIsLoading(true);
-      }
-      
-      // Always fetch fresh data to ensure we have the latest
-      fetchGlobalCorrelation();
+      // When switching to global view, load data from localStorage
+      // Reset and show loading state if needed
+      resetMatrixData();
+      loadGlobalCorrelation();
     } else {
       // For custom view, reset the matrix data
       resetMatrixData();
@@ -362,6 +377,20 @@ Strongest: ${strongest[0].split('.').pop()} and ${strongest[1].split('.').pop()}
     return name;
   };
 
+  // Get the cached timestamp for display
+  const getCachedTimestamp = () => {
+    try {
+      const storedData = localStorage.getItem('globalCorrelationData');
+      if (storedData) {
+        const parsedData = JSON.parse(storedData);
+        return new Date(parsedData.timestamp).toLocaleTimeString();
+      }
+    } catch (error) {
+      console.error("Error parsing stored timestamp:", error);
+    }
+    return null;
+  };
+
   return (
     <div className="p-4 bg-gradient-to-br from-blue-50 to-indigo-50">
       {/* Header */}
@@ -382,9 +411,9 @@ Strongest: ${strongest[0].split('.').pop()} and ${strongest[1].split('.').pop()}
         </div>
 
         <div className="flex items-center gap-2">
-          {view === 'global' && globalDataCache.current.timestamp > 0 && (
+          {view === 'global' && getCachedTimestamp() && (
             <div className="text-xs text-gray-500">
-              Cached: {new Date(globalDataCache.current.timestamp).toLocaleTimeString()}
+              Cached: {getCachedTimestamp()}
             </div>
           )}
           <button
