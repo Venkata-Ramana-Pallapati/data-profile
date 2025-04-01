@@ -150,8 +150,8 @@ const LLMAnalysisBox = ({ analysis }: { analysis?: string }) => {
           AI Analysis
         </h3>
       </div>
-      <div className="bg-white p-6 rounded-lg shadow-inner">
-        <div className="relative">
+      <div className="bg-blue-100 p-6 rounded-lg shadow-inner">
+      <div className="relative">
           <div className="absolute left-0 top-0 w-1 h-full bg-indigo-400 rounded-full" />
           <p className="pl-6 text-gray-700 leading-relaxed whitespace-pre-line">{analysis}</p>
         </div>

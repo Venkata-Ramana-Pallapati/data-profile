@@ -85,7 +85,6 @@ const DataWarehouseUI = () => {
       setMetadataLoading(true);
       const response = await fetch(`http://127.0.0.1:8000/list-metadata`);
       const data = await response.json();
-      console.log("hii",data);
       // Extract the metadata for the selected table from the response object
       // Based on the example response: { "updated_customers": "this table about customer details", "updated_orders": "this regarding about orders" }
       if (data && typeof data === 'object') {
