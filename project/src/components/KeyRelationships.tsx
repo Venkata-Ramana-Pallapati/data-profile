@@ -161,6 +161,9 @@ const SchemaNetworkVisualizer: React.FC = () => {
 
     // Generate colors for tables
     const getTableColor = (index: number, isSelected: boolean, isHovered: boolean, isRelated: boolean) => {
+      // Ensure index is a valid non-negative number
+      const safeIndex = Math.max(0, index || 0);
+      
       const baseColors = [
         { main: "#8B5CF6", light: "#C4B5FD", dark: "#6D28D9" }, // Purple
         { main: "#EC4899", light: "#F9A8D4", dark: "#BE185D" }, // Pink
@@ -171,7 +174,8 @@ const SchemaNetworkVisualizer: React.FC = () => {
         { main: "#06B6D4", light: "#A5F3FC", dark: "#0E7490" }, // Cyan
       ];
       
-      const colorSet = baseColors[index % baseColors.length];
+      // Use a default color if the index is out of bounds
+      const colorSet = baseColors[safeIndex % baseColors.length] || baseColors[0];
       
       if (isSelected) return colorSet.dark;
       if (isHovered) return colorSet.main;
@@ -216,8 +220,16 @@ const SchemaNetworkVisualizer: React.FC = () => {
               {/* Draw relationships */}
               {data.relationships.map((rel, idx) => {
                 // Calculate angles for nodes based on their position in the table array
-                const startAngle = (tables.indexOf(rel.table) * 2 * Math.PI) / tableCount;
-                const endAngle = (tables.indexOf(rel.references_table) * 2 * Math.PI) / tableCount;
+                const startTableIndex = tables.indexOf(rel.table);
+                const endTableIndex = tables.indexOf(rel.references_table);
+                
+                // Ensure valid indexes (could be -1 if table not found)
+                if (startTableIndex === -1 || endTableIndex === -1) {
+                  return null; // Skip this relationship if tables not found
+                }
+                
+                const startAngle = (startTableIndex * 2 * Math.PI) / tableCount;
+                const endAngle = (endTableIndex * 2 * Math.PI) / tableCount;
                 
                 // Calculate precise coordinates for start and end points
                 const startX = centerX + radius * Math.cos(startAngle);
@@ -238,9 +250,9 @@ const SchemaNetworkVisualizer: React.FC = () => {
                 
                 const isHighlighted = selectedTable === rel.table || selectedTable === rel.references_table;
                 
-                // Determine color based on table position
-                const sourceIndex = tables.indexOf(rel.table);
-                const targetIndex = tables.indexOf(rel.references_table);
+                // Determine color based on table position - ensure valid indices
+                const sourceIndex = Math.max(0, startTableIndex);
+                const targetIndex = Math.max(0, endTableIndex);
                 const colorIndex = Math.min(sourceIndex, targetIndex);
                 const gradientId = `line-gradient-${idx}`;
                 

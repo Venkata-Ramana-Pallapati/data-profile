@@ -52,7 +52,7 @@ Final Score = (95 + 88 + 95 + 88) / 4 = 91.5%`
 
 const CompletenessDetails = {
   title: "Completeness Calculation",
-  formula: `Completeness% = (Filled Fields / Total Fields) × 100`,
+  formula: `table_completeness = (1 - (total_missing_values / total_cells)) * 100`,
   explanation: "Completeness measures the percentage of fields that are filled with valid data versus the total number of fields that could potentially contain data.",
   impact: [
     "Higher completeness means more reliable data for analysis",
@@ -60,9 +60,12 @@ const CompletenessDetails = {
     "Low completeness may indicate data collection or entry issues"
   ],
   example: `Example:
-Table with 1000 rows and 10 columns (10,000 total fields)
-850 fields contain data (9,150 fields are filled)
-Completeness = (9,150 / 10,000) × 100 = 91.5%`,
+Table with 500 rows and 8 columns (4,000 total fields)
+600 fields contain missing data (3,400 fields are filled)
+Completeness = (1 - (600 / 4,000)) × 100
+= (1 - 0.15) × 100
+= 0.85 × 100
+= 85%`,
   recommendations: [
     "Improve data collection processes for low-completeness fields",
     "Implement validation rules to ensure critical fields are filled",

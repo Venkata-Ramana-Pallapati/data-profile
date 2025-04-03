@@ -124,8 +124,7 @@ const ColumnCorrelation = () => {
       // Check if transformedData exists and is an array
       if (!transformedData || !Array.isArray(transformedData)) {
         throw new Error('Invalid data format received from API');
-      }
-      
+      } 
       // Process the transformed data
       const columns = processData(transformedData);
       
